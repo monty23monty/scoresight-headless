@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from scoresight.core.config import ConfigStore
 from scoresight.core.events import LatestValueBus
+from scoresight.core.metrics import ServiceMetrics
 from scoresight.core.models import HealthSnapshot, ResultBatch
 
 
@@ -17,14 +18,6 @@ class PreviewFrame:
     sequence: int
 
 
-@dataclass(slots=True)
-class ServiceMetrics:
-    capture_frames: int = 0
-    preview_frames: int = 0
-    ocr_batches: int = 0
-    last_ocr_latency_ms: float = 0.0
-
-
 class ScoreSightService:
     def __init__(self, config_store: ConfigStore) -> None:
         self.config_store = config_store
@@ -32,6 +25,8 @@ class ScoreSightService:
         self.health_events = LatestValueBus[HealthSnapshot]()
         self.preview_frames = LatestValueBus[PreviewFrame]()
         self.latest_result: ResultBatch | None = None
+        self.latest_preview: PreviewFrame | None = None
+        self.latest_region_previews: dict[str, bytes] = {}
         self.health = HealthSnapshot()
         self.metrics = ServiceMetrics()
         self.started_at = datetime.now(UTC)
@@ -46,7 +41,11 @@ class ScoreSightService:
         await self.health_events.publish(health)
 
     async def publish_preview(self, preview: PreviewFrame) -> None:
+        self.latest_preview = preview
         await self.preview_frames.publish(preview)
+
+    def publish_region_previews(self, previews: dict[str, bytes]) -> None:
+        self.latest_region_previews = dict(previews)
 
     async def stop(self) -> None:
         for task in self._output_tasks:

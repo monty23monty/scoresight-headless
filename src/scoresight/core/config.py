@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -28,9 +29,12 @@ class ConfigStore:
                 self._config = ServiceConfig()
                 self._write(self._config)
             else:
-                self._config = ServiceConfig.model_validate_json(
-                    self.path.read_text(encoding="utf-8")
-                )
+                raw_config = json.loads(self.path.read_text(encoding="utf-8"))
+                self._config = ServiceConfig.model_validate(raw_config)
+                # Persist newly introduced defaults once so generated values such as
+                # the local administrator token survive process/container restarts.
+                if raw_config != json.loads(self._config.model_dump_json()):
+                    self._write(self._config)
             return self._config.model_copy(deep=True)
 
     def replace(self, config: ServiceConfig, expected_revision: int) -> ServiceConfig:

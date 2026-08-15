@@ -5,7 +5,9 @@ from pathlib import Path
 
 from scoresight.core.events import LatestValueBus
 from scoresight.core.models import OutputConfig, ResultBatch
+from scoresight.core.secrets import read_secret_file
 from scoresight.outputs.base import OutputAdapter
+from scoresight.outputs.fan_site import FanSiteWebSocketOutput
 from scoresight.outputs.file import FileOutput
 from scoresight.outputs.http import HttpOutput, UnoOutput, VMixOutput
 
@@ -19,7 +21,13 @@ class OutputManager:
     def configure(self, configs: list[OutputConfig]) -> None:
         if self.tasks:
             raise RuntimeError("stop output manager before reconfiguring")
-        self.adapters = {config.id: self._build(config) for config in configs if config.enabled}
+        self.adapters = {}
+        for config in configs:
+            if not config.enabled:
+                continue
+            adapter = self._build(config)
+            adapter.kind = config.kind
+            self.adapters[config.id] = adapter
 
     async def start(self) -> None:
         for adapter_id, adapter in self.adapters.items():
@@ -65,4 +73,20 @@ class OutputManager:
             )
         if config.kind == "file":
             return FileOutput(config.id, Path(str(settings["path"])))
+        if config.kind == "fan_site":
+            token = (
+                read_secret_file(str(settings["token_file"]))
+                if settings.get("token_file")
+                else str(settings["token"])
+            )
+            return FanSiteWebSocketOutput(
+                config.id,
+                endpoint=str(settings["endpoint"]),
+                stream_id=str(settings["stream_id"]),
+                token=token,
+                field_mapping=config.field_mapping,
+                origin=str(settings["origin"]) if settings.get("origin") else None,
+                send_unchanged=config.send_unchanged,
+                timeout=float(settings.get("timeout", 5.0)),
+            )
         raise ValueError(f"unsupported output kind: {config.kind}")

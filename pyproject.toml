@@ -13,10 +13,13 @@ dependencies = [
   "fastapi>=0.115,<1",
   "httpx>=0.27,<1",
   "jinja2>=3.1,<4",
+  "prometheus-client>=0.21,<1",
+  "pyjwt[crypto]>=2.10,<3",
   "platformdirs>=4.3,<5",
   "pydantic>=2.10,<3",
   "python-multipart>=0.0.18,<1",
   "uvicorn[standard]>=0.30,<1",
+  "websockets>=15,<18",
 ]
 
 [project.optional-dependencies]
@@ -24,7 +27,11 @@ ocr = [
   "numpy>=1.26,<3",
   "opencv-python-headless>=4.10,<6",
   "pillow>=10,<13",
-  "tesserocr>=2.7,<3",
+  "tesserocr>=2.7,<3; sys_platform != 'win32'",
+  "tesserocr @ https://github.com/simonflueckiger/tesserocr-windows_build/releases/download/tesserocr-v2.10.0-tesseract-5.5.2/tesserocr-2.10.0-cp311-cp311-win_amd64.whl#sha256=02f75202a13804dacaac111cc4375cdb7b0194217f7f36add30cbb57c37c002c ; sys_platform == 'win32' and platform_machine == 'AMD64' and python_version == '3.11'",
+  "tesserocr @ https://github.com/simonflueckiger/tesserocr-windows_build/releases/download/tesserocr-v2.10.0-tesseract-5.5.2/tesserocr-2.10.0-cp312-cp312-win_amd64.whl#sha256=e05d41a2b0e6f38f3a5195d05a73674d72152a775d1b8ebe481ca9306f94d27a ; sys_platform == 'win32' and platform_machine == 'AMD64' and python_version == '3.12'",
+  "tesserocr @ https://github.com/simonflueckiger/tesserocr-windows_build/releases/download/tesserocr-v2.10.0-tesseract-5.5.2/tesserocr-2.10.0-cp313-cp313-win_amd64.whl#sha256=a7f1a56f2c70095d108304e2e76fd6aebd06a42712cb87b8976d52d1e7faf6d8 ; sys_platform == 'win32' and platform_machine == 'AMD64' and python_version == '3.13'",
+  "tesserocr @ https://github.com/simonflueckiger/tesserocr-windows_build/releases/download/tesserocr-v2.10.0-tesseract-5.5.2/tesserocr-2.10.0-cp314-cp314-win_amd64.whl#sha256=e7abf40539b852bd25cceadad7a1a3bba9c223556bafa908e2dbf91407080af5 ; sys_platform == 'win32' and platform_machine == 'AMD64' and python_version == '3.14'",
 ]
 desktop-legacy = ["pyside6>=6.7,<7", "opencv-python>=4.10,<6"]
 dev = [

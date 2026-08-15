@@ -12,6 +12,9 @@ Tesseract runtime boundaries.
 See [Service guide](docs/SERVICE.md), [Architecture](docs/ARCHITECTURE.md), and
 [DeckLink integration](docs/DECKLINK.md).
 
+The supported public deployment topology is documented in
+[Production deployment](docs/PRODUCTION.md).
+
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1

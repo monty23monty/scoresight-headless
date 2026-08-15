@@ -1,0 +1,9 @@
+[Unit]
+Description=Back up ScoreSight configuration and profiles
+
+[Service]
+Type=oneshot
+ExecStart=/opt/scoresight/packaging/operations/backup-scoresight.sh
+PrivateTmp=true
+NoNewPrivileges=true
+

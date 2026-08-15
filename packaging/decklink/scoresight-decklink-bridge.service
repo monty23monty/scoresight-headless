@@ -1,0 +1,27 @@
+[Unit]
+Description=ScoreSight DeckLink to RTSP bridge
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+User=scoresight-capture
+Group=video
+EnvironmentFile=/etc/scoresight/decklink-bridge.env
+ExecStart=/opt/scoresight-decklink/bin/decklink-bridge.sh
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
+

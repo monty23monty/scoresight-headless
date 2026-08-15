@@ -8,6 +8,17 @@ from scoresight.core.config import ConfigStore, RevisionConflict
 from scoresight.core.profiles import ProfileStore
 
 
+def test_load_persists_new_defaults_and_generated_token(tmp_path) -> None:
+    path = tmp_path / "config.json"
+    path.write_text('{"source":{"kind":"mock"}}', encoding="utf-8")
+
+    first_token = ConfigStore(path).load().security.admin_token
+    persisted = json.loads(path.read_text(encoding="utf-8"))
+
+    assert persisted["security"]["admin_token"] == first_token
+    assert ConfigStore(path).load().security.admin_token == first_token
+
+
 def test_config_store_creates_and_atomically_replaces_config(tmp_path) -> None:
     path = tmp_path / "config.json"
     store = ConfigStore(path)

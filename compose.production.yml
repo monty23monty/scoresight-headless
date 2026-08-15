@@ -1,0 +1,70 @@
+name: scoresight
+
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:1.18.2@sha256:f8628851106cc053f9175b248050bb5f362a6e65abd72297c167a1cb5a9a3be2
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    volumes:
+      - ./packaging/docker/mediamtx.yml:/mediamtx.yml:ro
+    ports:
+      - 127.0.0.1:8554:8554
+    networks:
+      - capture
+
+  scoresight:
+    image: ${SCORESIGHT_IMAGE:?set the immutable ScoreSight image digest}
+    restart: unless-stopped
+    init: false
+    stop_grace_period: 35s
+    depends_on:
+      - mediamtx
+    read_only: true
+    user: 10001:10001
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    volumes:
+      - scoresight-data:/var/lib/scoresight
+    secrets:
+      - fan_site_token
+    environment:
+      SCORESIGHT_AUTH_MODE: cloudflare_access
+      SCORESIGHT_CF_TEAM_DOMAIN: ${SCORESIGHT_CF_TEAM_DOMAIN:?set Cloudflare team domain}
+      SCORESIGHT_CF_AUDIENCE: ${SCORESIGHT_CF_AUDIENCE:?set Cloudflare application audience}
+      SCORESIGHT_PUBLIC_URL: ${SCORESIGHT_PUBLIC_URL:?set public https URL}
+      SCORESIGHT_ALLOWED_HOSTS: ${SCORESIGHT_ALLOWED_HOSTS:?set public hostname}
+      SCORESIGHT_ALLOWED_ORIGINS: ${SCORESIGHT_ALLOWED_ORIGINS:?set public https origin}
+      SCORESIGHT_TRUSTED_PROXIES: ${SCORESIGHT_TRUSTED_PROXIES:-172.16.0.0/12}
+      SCORESIGHT_JSON_LOGS: "true"
+      SCORESIGHT_ACCESS_LOG: "false"
+      SCORESIGHT_WEBSOCKET_LIMIT: "8"
+    expose:
+      - "18099"
+    cpus: 4.0
+    mem_limit: 4g
+    networks:
+      - capture
+      - proxy
+
+volumes:
+  scoresight-data:
+
+secrets:
+  fan_site_token:
+    file: ${SCORESIGHT_FAN_TOKEN_FILE:-./secrets/fan_site_token}
+
+networks:
+  capture:
+  proxy:
+    external: true
+    name: ${NPM_NETWORK:-proxy}

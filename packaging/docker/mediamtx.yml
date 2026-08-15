@@ -1,0 +1,20 @@
+logLevel: info
+readTimeout: 10s
+writeTimeout: 10s
+writeQueueSize: 512
+rtsp: yes
+rtspAddress: :8554
+protocols: [tcp]
+rtmp: no
+hls: no
+webrtc: no
+srt: no
+api: no
+metrics: no
+pprof: no
+
+paths:
+  scoreboard:
+    source: publisher
+    overridePublisher: true
+

@@ -3,6 +3,7 @@ name: Service quality
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
 
@@ -22,9 +23,9 @@ jobs:
           cache: pip
       - run: python -m pip install uv
       - run: uv sync --locked --extra dev --python python
-      - run: uv run ruff check src/scoresight tests scripts/benchmark_ocr.py
+      - run: uv run ruff check src/scoresight tests scripts/benchmark_ocr.py scripts/evaluate_ocr_corpus.py
       - run: uv run mypy -p scoresight
-      - run: uv run pytest -m "not decklink_hardware" --cov=scoresight --cov-report=xml
+      - run: uv run pytest -m "not decklink_hardware" --cov=scoresight --cov-branch --cov-report=xml --cov-fail-under=80
       - uses: actions/upload-artifact@v4
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
         with:
@@ -44,3 +45,121 @@ jobs:
         with:
           name: service-package
           path: dist/*
+
+  container:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: scoresight:ci
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            REVISION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Container smoke and persistence test
+        run: |
+          docker volume create scoresight-ci-data
+          docker run --detach --name scoresight-ci --publish 127.0.0.1:18099:18099 \
+            --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,noexec,nosuid,size=128m \
+            --volume scoresight-ci-data:/var/lib/scoresight \
+            --env SCORESIGHT_AUTH_MODE=token scoresight:ci
+          for attempt in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:18099/livez && break
+            sleep 1
+          done
+          curl --fail http://127.0.0.1:18099/livez
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18099/api/v1/config)" = "401"
+          docker exec -i scoresight-ci python - <<'PY'
+          import asyncio
+          import json
+          import urllib.parse
+          import urllib.request
+
+          import websockets
+
+          token = json.load(open("/var/lib/scoresight/config-v1.json"))["security"]["admin_token"]
+          request = urllib.request.Request(
+              "http://127.0.0.1:18099/api/v1/config",
+              headers={"Authorization": f"Bearer {token}"},
+          )
+          assert urllib.request.urlopen(request, timeout=5).status == 200
+
+          async def smoke_websocket():
+              url = "ws://127.0.0.1:18099/api/v1/events?token=" + urllib.parse.quote(token)
+              async with websockets.connect(url, open_timeout=5) as connection:
+                  assert connection.close_code is None
+
+          asyncio.run(smoke_websocket())
+          PY
+          docker exec scoresight-ci python -c "import os; from pathlib import Path; import cv2, tesserocr; from scoresight.ocr.tesseract_engine import TesseractEngine; engine=TesseractEngine('scoreboard_general', Path(os.environ['SCORESIGHT_TESSDATA'])); engine.close(); print(cv2.__version__, tesserocr.tesseract_version())"
+          CONFIG_HASH="$(docker exec scoresight-ci sha256sum /var/lib/scoresight/config-v1.json | cut -d ' ' -f 1)"
+          docker stop scoresight-ci
+          docker rm scoresight-ci
+          docker run --detach --name scoresight-ci-restart --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --tmpfs /tmp:rw,noexec,nosuid,size=128m \
+            --volume scoresight-ci-data:/var/lib/scoresight \
+            --env SCORESIGHT_AUTH_MODE=token scoresight:ci
+          sleep 3
+          docker exec scoresight-ci-restart test -f /var/lib/scoresight/config-v1.json
+          test "$CONFIG_HASH" = "$(docker exec scoresight-ci-restart sha256sum /var/lib/scoresight/config-v1.json | cut -d ' ' -f 1)"
+      - uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: scoresight:ci
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+      - uses: anchore/sbom-action@v0.20.5
+        with:
+          image: scoresight:ci
+          artifact-name: scoresight-amd64.spdx.json
+          format: spdx-json
+
+  publish-container:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: container
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            REVISION=${{ github.sha }}
+      - uses: sigstore/cosign-installer@v3.9.2
+      - name: Sign immutable image digest
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"

@@ -30,6 +30,9 @@ Icon
 __MACOSX/
 
 .env
+.env.production
+secrets/
+local-config.json
 output/
 .vscode
 .aider*

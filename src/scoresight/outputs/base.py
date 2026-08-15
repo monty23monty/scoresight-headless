@@ -5,7 +5,7 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from scoresight.core.events import LatestValueBus
 from scoresight.core.models import ResultBatch
@@ -26,6 +26,7 @@ class OutputStatus:
 class OutputAdapter(ABC):
     def __init__(self, adapter_id: str) -> None:
         self.adapter_id = adapter_id
+        self.kind = type(self).__name__
         self.status = OutputStatus()
         self._retry_after = 0.0
 
@@ -60,3 +61,6 @@ class OutputAdapter(ABC):
 
     async def close(self) -> None:
         self.status.state = "stopped"
+
+    def details(self) -> dict[str, Any]:
+        return {}

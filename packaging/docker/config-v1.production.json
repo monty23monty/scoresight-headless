@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "revision": 0,
+  "source": {
+    "kind": "rtsp",
+    "device_id": "0",
+    "mode": "auto",
+    "uri": "rtsp://mediamtx:8554/scoreboard",
+    "reconnect_seconds": 1.0,
+    "open_timeout_seconds": 5.0,
+    "read_timeout_seconds": 2.0,
+    "stale_after_seconds": 5.0
+  },
+  "ocr": {
+    "engine": "tesseract",
+    "model": "scoreboard_general",
+    "language": "eng",
+    "target_hz": 10.0,
+    "workers": 2
+  },
+  "regions": [],
+  "outputs": []
+}
+

@@ -10,6 +10,26 @@ def crop_region(image: Any, bounds: tuple[int, int, int, int]) -> Any:
     return image[y1:y2, x1:x2]
 
 
+def autocrop_foreground(image: Any) -> Any:
+    """Crop to pixels that differ from the estimated border background."""
+
+    import numpy as np
+
+    if image.size == 0 or image.shape[0] < 2 or image.shape[1] < 2:
+        return image
+    border = np.concatenate((image[0, :], image[-1, :], image[:, 0], image[:, -1]))
+    background = float(np.median(border))
+    foreground = np.abs(image.astype(np.float32) - background) > 8
+    rows, columns = np.nonzero(foreground)
+    if not len(rows):
+        return image
+    y1 = max(0, int(rows.min()) - 1)
+    y2 = min(image.shape[0], int(rows.max()) + 2)
+    x1 = max(0, int(columns.min()) - 1)
+    x2 = min(image.shape[1], int(columns.max()) + 2)
+    return image[y1:y2, x1:x2]
+
+
 def transform_frame(
     image: Any,
     *,
@@ -26,13 +46,29 @@ def transform_frame(
             [[point.x * width, point.y * height] for point in perspective],
             dtype=np.float32,
         )
+        top_width = np.linalg.norm(source[1] - source[0])
+        bottom_width = np.linalg.norm(source[2] - source[3])
+        left_height = np.linalg.norm(source[3] - source[0])
+        right_height = np.linalg.norm(source[2] - source[1])
+        output_width = max(1, round(float(max(top_width, bottom_width))))
+        output_height = max(1, round(float(max(left_height, right_height))))
         destination = np.asarray(
-            [[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]],
+            [
+                [0, 0],
+                [output_width - 1, 0],
+                [output_width - 1, output_height - 1],
+                [0, output_height - 1],
+            ],
             dtype=np.float32,
         )
         matrix = cv2.getPerspectiveTransform(source, destination)
-        transformed = cv2.warpPerspective(transformed, matrix, (width, height))
+        transformed = cv2.warpPerspective(
+            transformed,
+            matrix,
+            (output_width, output_height),
+        )
     if crop is not None:
+        height, width = transformed.shape[:2]
         transformed = crop_region(transformed, crop.pixels(width, height))
     return transformed
 
@@ -68,4 +104,6 @@ def preprocess(image: Any, config: PreprocessConfig) -> Any:
             fy=config.vertical_scale,
             interpolation=cv2.INTER_AREA,
         )
+    if config.autocrop:
+        patch = autocrop_foreground(patch)
     return patch

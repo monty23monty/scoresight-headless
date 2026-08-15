@@ -13,6 +13,7 @@ from scoresight.capture.mock import MockCapture
 from scoresight.capture.opencv import OpenCVCapture
 from scoresight.core.config import ConfigStore
 from scoresight.core.models import HealthComponent, HealthSnapshot, ServiceConfig
+from scoresight.core.secrets import read_secret_file
 from scoresight.core.service import PreviewFrame, ScoreSightService
 from scoresight.ocr.base import OcrEngine
 from scoresight.ocr.pipeline import RecognitionPipeline
@@ -37,8 +38,12 @@ class RuntimeController:
     async def stop(self) -> None:
         self._stop.set()
         if self._task is not None:
-            self._task.cancel()
-            await asyncio.gather(self._task, return_exceptions=True)
+            try:
+                await asyncio.wait_for(asyncio.shield(self._task), timeout=30.0)
+            except TimeoutError:
+                logger.warning("runtime did not stop within 30 seconds; cancelling")
+                self._task.cancel()
+                await asyncio.gather(self._task, return_exceptions=True)
             self._task = None
 
     async def restart(self) -> None:
@@ -54,18 +59,39 @@ class RuntimeController:
             pipeline = None
             try:
                 source = self._build_source(config)
-                pipeline = self._build_pipeline(config)
                 await asyncio.to_thread(source.open)
+                if failure_count:
+                    self.service.metrics.capture_reconnects.inc()
+                ocr_error = ""
+                if config.regions:
+                    try:
+                        pipeline = self._build_pipeline(config)
+                    except Exception as exc:
+                        ocr_error = f"{type(exc).__name__}: {exc}"
+                        logger.error("OCR unavailable; preview will continue: %s", ocr_error)
                 failure_count = 0
                 last_error = ""
                 await self.service.publish_health(
-                    HealthSnapshot(capture=HealthComponent(message="capture connected"))
+                    HealthSnapshot(
+                        status="degraded" if ocr_error else "ok",
+                        capture=HealthComponent(message="capture connected"),
+                        ocr=HealthComponent(
+                            status="degraded" if ocr_error else "ok",
+                            message=ocr_error
+                            or (
+                                "OCR ready"
+                                if config.regions
+                                else "waiting for regions to be configured"
+                            ),
+                        ),
+                    )
                 )
                 await self._capture_loop(config, source, pipeline)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 failure_count += 1
+                self.service.metrics.capture_failures.inc()
                 error = f"{type(exc).__name__}: {exc}"
                 if error != last_error:
                     logger.error("runtime unavailable: %s", error)
@@ -92,7 +118,10 @@ class RuntimeController:
                     await asyncio.to_thread(pipeline.close)
 
     async def _capture_loop(
-        self, config: ServiceConfig, source: Any, pipeline: RecognitionPipeline
+        self,
+        config: ServiceConfig,
+        source: Any,
+        pipeline: RecognitionPipeline | None,
     ) -> None:
         ocr_period = 1.0 / config.ocr.target_hz
         preview_period = 0.2
@@ -102,19 +131,19 @@ class RuntimeController:
             frame = await asyncio.to_thread(source.read_latest, 1.0)
             if frame is None:
                 raise RuntimeError("capture signal lost")
-            self.service.metrics.capture_frames += 1
+            self.service.metrics.record_capture()
             now = time.perf_counter()
             if now >= next_preview:
                 preview = await asyncio.to_thread(self._encode_preview, frame, config)
                 await self.service.publish_preview(preview)
-                self.service.metrics.preview_frames += 1
+                self.service.metrics.preview_frames.inc()
                 next_preview = now + preview_period
-            if now < next_ocr or not config.regions:
+            if now < next_ocr or not config.regions or pipeline is None:
                 continue
             result = await asyncio.to_thread(pipeline.process, frame)
+            self.service.publish_region_previews(pipeline.latest_previews)
             await self.service.publish_result(result)
-            self.service.metrics.ocr_batches += 1
-            self.service.metrics.last_ocr_latency_ms = result.latency_ms
+            self.service.metrics.record_result(result)
             next_ocr = now + ocr_period
 
     @staticmethod
@@ -130,9 +159,15 @@ class RuntimeController:
             )
             return OpenCVCapture(device)
         if source.kind in {"rtsp", "file"}:
-            if not source.uri:
+            uri = read_secret_file(source.uri_file) if source.uri_file else source.uri
+            if not uri:
                 raise ValueError(f"{source.kind} source requires a URI")
-            return OpenCVCapture(source.uri)
+            return OpenCVCapture(
+                uri,
+                pace=source.kind == "file",
+                open_timeout=source.open_timeout_seconds,
+                read_timeout=source.read_timeout_seconds,
+            )
         raise ValueError(f"unsupported source kind: {source.kind}")
 
     @staticmethod
@@ -140,15 +175,29 @@ class RuntimeController:
         env_path = os.getenv("SCORESIGHT_TESSDATA")
         repository_path = Path(__file__).resolve().parents[3] / "tesseract" / "tessdata"
         tessdata_path = Path(env_path) if env_path else repository_path
+        field_whitelists = {
+            "number": "0123456789",
+            "time": "0123456789:.",
+        }
+        character_whitelists = {
+            region.id: field_whitelists[region.field_type]
+            for region in config.regions
+            if region.field_type in field_whitelists
+        }
         engine: OcrEngine
         if config.ocr.workers > 1:
             engine = PooledTesseractEngine(
                 config.ocr.model,
                 workers=config.ocr.workers,
                 tessdata_path=tessdata_path,
+                character_whitelists=character_whitelists,
             )
         else:
-            engine = TesseractEngine(config.ocr.model, tessdata_path=tessdata_path)
+            engine = TesseractEngine(
+                config.ocr.model,
+                tessdata_path=tessdata_path,
+                character_whitelists=character_whitelists,
+            )
         return RecognitionPipeline(
             engine,
             config.regions,

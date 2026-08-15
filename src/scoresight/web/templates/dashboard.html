@@ -39,7 +39,7 @@
           <canvas id="preview" width="960" height="540" aria-label="Video preview and OCR regions"></canvas>
           <p id="preview-empty">Waiting for preview frames</p>
         </div>
-        <p class="hint">Choose “Draw region”, then drag over the scoreboard field. Coordinates are stored independently of preview resolution.</p>
+        <p class="hint">Draw a region, click inside it to move it, or drag its corner handles to resize it. Coordinates are stored independently of preview resolution.</p>
       </section>
 
       <aside class="controls">
@@ -74,10 +74,21 @@
           <p id="region-empty">Select or draw a region.</p>
           <fieldset id="region-fields" disabled>
             <label>Name<input id="region-name" maxlength="100"></label>
+            <label>Field type
+              <select id="region-field-type">
+                <option value="time">Clock / time</option>
+                <option value="number">Number / score</option>
+                <option value="text">Free text</option>
+              </select>
+            </label>
             <label>Validation expression<input id="region-regex"></label>
             <div class="two-column">
               <label>Confidence<input id="region-confidence" type="number" min="0" max="1" step="0.05"></label>
+              <label>Confirm frames<input id="region-confirmation" type="number" min="1" max="15"></label>
+            </div>
+            <div class="two-column">
               <label>Smoothing<input id="region-smoothing" type="number" min="1" max="15"></label>
+              <span></span>
             </div>
             <label>Threshold
               <select id="region-threshold">
@@ -86,9 +97,29 @@
                 <option value="none">None</option>
               </select>
             </label>
+            <div class="two-column">
+              <label>Dilate<input id="region-dilate" type="number" min="0" max="10" step="1"></label>
+              <label>Vertical scale<input id="region-vscale" type="number" min="0.1" max="3" step="0.1"></label>
+            </div>
             <div class="checks">
               <label><input id="region-invert" type="checkbox"> Invert</label>
               <label><input id="region-leading" type="checkbox"> Remove leading zeros</label>
+              <label><input id="region-autocrop" type="checkbox"> Auto-crop</label>
+            </div>
+            <p class="hint">Clock and number types restrict Tesseract to valid characters. Confirm frames prevents a single bad reading from replacing the accepted value. Save to apply changes.</p>
+            <div class="filter-preview-card">
+              <div class="panel-heading">
+                <strong>OCR filter preview</strong>
+                <span id="filtered-preview-state" class="result-state">Waiting</span>
+              </div>
+              <div class="filter-preview-shell">
+                <img id="filtered-preview" alt="Exact filtered image sent to OCR" hidden>
+                <span id="filtered-preview-empty">Waiting for OCR input</span>
+              </div>
+              <dl class="recognition-values">
+                <dt>Accepted value</dt><dd id="selected-accepted-value">—</dd>
+                <dt>Current candidate</dt><dd id="selected-candidate-value">—</dd>
+              </dl>
             </div>
           </fieldset>
         </section>
@@ -101,17 +132,19 @@
 
         <section class="panel">
           <h2>Output adapters</h2>
-          <p class="hint">Configure vMix, UNO, webhooks, and files as validated JSON until adapter-specific forms are added.</p>
+          <p class="hint">Configure vMix, UNO, webhooks, files, and the live fan-site OCR WebSocket as validated JSON. Fan-site mappings use accepted names such as Clock.Text, score_a, score_b, and period.</p>
           <textarea id="outputs-json" rows="10" spellcheck="false"></textarea>
-          <div id="output-status" class="compact-list"></div>
+          <ul id="output-status" class="compact-list"></ul>
         </section>
 
         <section class="panel">
           <h2>Live results</h2>
-          <table>
-            <thead><tr><th>Field</th><th>Value</th><th>State</th><th>Confidence</th></tr></thead>
-            <tbody id="results"></tbody>
-          </table>
+          <div class="results-table-wrap">
+            <table class="results-table">
+              <thead><tr><th>Accepted frame</th><th>Field</th><th>Accepted value</th><th>Candidate</th><th>State</th><th>Confidence</th></tr></thead>
+              <tbody id="results"></tbody>
+            </table>
+          </div>
         </section>
       </aside>
     </main>

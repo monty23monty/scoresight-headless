@@ -14,6 +14,7 @@ UnitFloat = Annotated[float, Field(ge=0.0, le=1.0)]
 class ResultState(StrEnum):
     OK = "ok"
     UNCHANGED = "unchanged"
+    PENDING = "pending"
     REJECTED = "rejected"
     EMPTY = "empty"
     STALE = "stale"
@@ -61,8 +62,10 @@ class RegionConfig(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     rect: NormalizedRect
     enabled: bool = True
+    field_type: Literal["number", "time", "text"] = "text"
     format_regex: str = r"^.*$"
     confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    confirmation_frames: int = Field(default=2, ge=1, le=15)
     smoothing_window: int = Field(default=1, ge=1, le=15)
     remove_leading_zeros: bool = False
     preprocess: PreprocessConfig = Field(default_factory=PreprocessConfig)
@@ -82,14 +85,24 @@ class SourceConfig(BaseModel):
     device_id: str = "0"
     mode: str = "1080p30"
     uri: str | None = None
+    uri_file: str | None = None
     reconnect_seconds: float = Field(default=1.0, ge=0.1, le=30.0)
+    open_timeout_seconds: float = Field(default=5.0, ge=0.5, le=60.0)
+    read_timeout_seconds: float = Field(default=2.0, ge=0.25, le=30.0)
+    stale_after_seconds: float = Field(default=5.0, ge=1.0, le=120.0)
+
+    @model_validator(mode="after")
+    def network_and_file_sources_have_a_location(self) -> SourceConfig:
+        if self.kind in {"rtsp", "file"} and not (self.uri or self.uri_file):
+            raise ValueError(f"{self.kind} source requires uri or uri_file")
+        return self
 
 
 class OcrConfig(BaseModel):
     engine: Literal["tesseract"] = "tesseract"
     model: str = "scoreboard_general"
     language: str = "eng"
-    target_hz: float = Field(default=15.0, ge=1.0, le=30.0)
+    target_hz: float = Field(default=10.0, ge=1.0, le=30.0)
     workers: int = Field(default=2, ge=1, le=4)
 
 
@@ -101,7 +114,7 @@ class SecurityConfig(BaseModel):
 
 class OutputConfig(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    kind: Literal["vmix", "uno", "webhook", "file"]
+    kind: Literal["vmix", "uno", "webhook", "file", "fan_site"]
     enabled: bool = False
     settings: dict[str, Any] = Field(default_factory=dict)
     field_mapping: dict[str, str] = Field(default_factory=dict)
@@ -109,14 +122,19 @@ class OutputConfig(BaseModel):
 
     @model_validator(mode="after")
     def required_settings_for_kind(self) -> OutputConfig:
-        required = {
-            "uno": "endpoint",
-            "webhook": "url",
-            "file": "path",
+        required: dict[str, tuple[str, ...]] = {
+            "uno": ("endpoint",),
+            "webhook": ("url",),
+            "file": ("path",),
+            "fan_site": ("endpoint", "stream_id"),
         }
-        key = required.get(self.kind)
-        if key is not None and not self.settings.get(key):
-            raise ValueError(f"{self.kind} output requires settings.{key}")
+        for key in required.get(self.kind, ()):
+            if not self.settings.get(key):
+                raise ValueError(f"{self.kind} output requires settings.{key}")
+        if self.kind == "fan_site" and not (
+            self.settings.get("token") or self.settings.get("token_file")
+        ):
+            raise ValueError("fan_site output requires settings.token or settings.token_file")
         return self
 
 
@@ -142,7 +160,10 @@ class ServiceConfig(BaseModel):
 class ResultField(BaseModel):
     id: str
     name: str
+    # The stable value most recently accepted by validation and confidence filters.
     value: str
+    # The value observed in the current frame, including rejected/empty candidates.
+    candidate_value: str = ""
     state: ResultState
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     changed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

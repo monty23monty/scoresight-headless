@@ -20,7 +20,8 @@
     <script>
       const token = new URLSearchParams(location.search).get('token') || '';
       const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-      const socket = new WebSocket(`${scheme}://${location.host}/api/v1/events?token=${encodeURIComponent(token)}`);
+      const tokenSuffix = token ? `?token=${encodeURIComponent(token)}` : "";
+      const socket = new WebSocket(`${scheme}://${location.host}/api/v1/events${tokenSuffix}`);
       socket.onmessage = ({data}) => {
         const event = JSON.parse(data);
         for (const field of event.fields || []) {
@@ -33,4 +34,3 @@
     </script>
   </body>
 </html>
-
