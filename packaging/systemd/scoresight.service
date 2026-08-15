@@ -1,0 +1,22 @@
+[Unit]
+Description=ScoreSight OCR service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=scoresight
+Group=scoresight
+Environment=SCORESIGHT_TESSDATA=/var/lib/scoresight/tessdata
+ExecStart=/opt/scoresight/.venv/bin/scoresight-service --host 0.0.0.0 --port 18099 --config /var/lib/scoresight/config-v1.json
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/scoresight
+
+[Install]
+WantedBy=multi-user.target
+

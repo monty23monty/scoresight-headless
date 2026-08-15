@@ -8,6 +8,14 @@ __pycache__/
 *.pyzw
 *.pycachefile
 *.egg-info/
+.coverage
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+.uv-cache/
+.uv-python/
+coverage.xml
 dist/
 build/
 

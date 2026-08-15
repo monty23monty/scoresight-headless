@@ -57,7 +57,7 @@ class VMixAPI:
             url = f"http://{self.host}:{self.port}/api/?{urlencode(query)}"
             try:
                 # Send the request
-                response = requests.post(url, data=data)
+                response = requests.post(url, data=data, timeout=1.0)
 
                 # Check the response
                 if response.status_code != 200:

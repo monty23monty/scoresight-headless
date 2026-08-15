@@ -60,7 +60,7 @@ class UNOAPI:
             }
 
         try:
-            response = requests.put(self.endpoint, json=payload)
+            response = requests.put(self.endpoint, json=payload, timeout=1.0)
             if response.status_code != 200:
                 logger.error(
                     f"Failed to send data to UNO API, status code: {response.status_code}"

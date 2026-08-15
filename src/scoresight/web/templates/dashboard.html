@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="scoresight-csrf" content="{{ csrf }}">
+    <title>ScoreSight control room</title>
+    <link rel="stylesheet" href="/static/app.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">ScoreSight</p>
+        <h1>OCR control room</h1>
+      </div>
+      <div class="status-line">
+        <span id="connection-dot" class="status-dot"></span>
+        <span id="connection-label">Connecting</span>
+        <button id="save-config" class="primary">Save configuration</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="stage panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Live source</p>
+            <h2>Frame and regions</h2>
+          </div>
+          <div class="toolbar">
+            <button id="add-region">Draw region</button>
+            <button id="set-crop">Draw crop</button>
+            <button id="set-perspective">Set four corners</button>
+            <button id="reset-transform">Reset transform</button>
+            <button id="clear-selection">Clear selection</button>
+          </div>
+        </div>
+        <div id="preview-shell" class="preview-shell">
+          <canvas id="preview" width="960" height="540" aria-label="Video preview and OCR regions"></canvas>
+          <p id="preview-empty">Waiting for preview frames</p>
+        </div>
+        <p class="hint">Choose “Draw region”, then drag over the scoreboard field. Coordinates are stored independently of preview resolution.</p>
+      </section>
+
+      <aside class="controls">
+        <section class="panel">
+          <div class="panel-heading"><h2>Source</h2><button id="refresh-sources">Discover</button></div>
+          <label for="source-kind">Capture type</label>
+          <select id="source-kind">
+            <option value="decklink">Blackmagic DeckLink</option>
+            <option value="opencv">DirectShow / V4L2</option>
+            <option value="rtsp">RTSP / URL</option>
+            <option value="file">File</option>
+            <option value="mock">Mock source</option>
+          </select>
+          <label for="source-device">Device</label>
+          <input id="source-device" autocomplete="off">
+          <label for="source-mode">Mode</label>
+          <input id="source-mode" value="1080p30" autocomplete="off">
+          <p id="source-errors" class="error"></p>
+        </section>
+
+        <section class="panel">
+          <h2>Recognition</h2>
+          <div class="two-column">
+            <label>Target Hz<input id="target-hz" type="number" min="1" max="30" step="1"></label>
+            <label>Workers<input id="ocr-workers" type="number" min="1" max="4" step="1"></label>
+          </div>
+          <label>Model<input id="ocr-model" autocomplete="off"></label>
+        </section>
+
+        <section class="panel" id="region-editor">
+          <div class="panel-heading"><h2>Selected region</h2><button id="delete-region" class="danger">Delete</button></div>
+          <p id="region-empty">Select or draw a region.</p>
+          <fieldset id="region-fields" disabled>
+            <label>Name<input id="region-name" maxlength="100"></label>
+            <label>Validation expression<input id="region-regex"></label>
+            <div class="two-column">
+              <label>Confidence<input id="region-confidence" type="number" min="0" max="1" step="0.05"></label>
+              <label>Smoothing<input id="region-smoothing" type="number" min="1" max="15"></label>
+            </div>
+            <label>Threshold
+              <select id="region-threshold">
+                <option value="otsu">Otsu</option>
+                <option value="adaptive">Adaptive</option>
+                <option value="none">None</option>
+              </select>
+            </label>
+            <div class="checks">
+              <label><input id="region-invert" type="checkbox"> Invert</label>
+              <label><input id="region-leading" type="checkbox"> Remove leading zeros</label>
+            </div>
+          </fieldset>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading"><h2>Profiles</h2><button id="save-profile">Save profile</button></div>
+          <div class="inline-field"><input id="profile-name" placeholder="Profile name"><button id="refresh-profiles">Refresh</button></div>
+          <ul id="profiles" class="compact-list"></ul>
+        </section>
+
+        <section class="panel">
+          <h2>Output adapters</h2>
+          <p class="hint">Configure vMix, UNO, webhooks, and files as validated JSON until adapter-specific forms are added.</p>
+          <textarea id="outputs-json" rows="10" spellcheck="false"></textarea>
+          <div id="output-status" class="compact-list"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Live results</h2>
+          <table>
+            <thead><tr><th>Field</th><th>Value</th><th>State</th><th>Confidence</th></tr></thead>
+            <tbody id="results"></tbody>
+          </table>
+        </section>
+      </aside>
+    </main>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script id="initial-config" type="application/json">{{ config | tojson }}</script>
+    <script type="module" src="/static/operator.js"></script>
+  </body>
+</html>

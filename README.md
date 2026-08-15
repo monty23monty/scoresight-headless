@@ -1,4 +1,31 @@
-# ⚠️ Stalled ⚠️ This project is not under active development
+# ScoreSight
+
+ScoreSight is being modernized from the original PySide desktop application into a
+headless-capable OCR service with a browser operator interface. The original desktop
+application remains in `src/` while the new Qt-free service lives in `src/scoresight/`.
+
+The service currently provides validated profiles, graphical normalized OCR regions,
+crop and perspective configuration, authenticated REST and WebSocket APIs, HTML
+scoreboard output, isolated vMix/UNO/webhook/file adapters, and optional DeckLink and
+Tesseract runtime boundaries.
+
+See [Service guide](docs/SERVICE.md), [Architecture](docs/ARCHITECTURE.md), and
+[DeckLink integration](docs/DECKLINK.md).
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+scoresight-service --config .\local-config.json
+```
+
+The generated administrator token is stored in `local-config.json`. Open
+`http://127.0.0.1:18099` and sign in with that token.
+
+## Legacy desktop application
+
+The following documentation describes the original desktop application. It is retained
+during the web-service migration but is no longer the target architecture.
 
 ## ScoreSight - Real-time OCR For Scoreboards, Apps, Games and more
 

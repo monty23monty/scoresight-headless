@@ -1,11 +1,8 @@
-import asyncio
-import http.server
-import http.client
 import logging
 import os
-import signal
 import socket
 import threading
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,10 +21,13 @@ load_dotenv(resource_path(".env"))
 
 PORT = 18099
 http_results = []
-loop: asyncio.AbstractEventLoop | None = None
+http_results_lock = threading.Lock()
+server_instance: uvicorn.Server | None = None
+server_thread: threading.Thread | None = None
 
 
-def lifespan(app: FastAPI):
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     logger = logging.getLogger("uvicorn.access")
     logger.addHandler(file_handler)
     yield
@@ -38,7 +38,7 @@ app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allows all origins
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
@@ -133,9 +133,11 @@ async def get_html():
 @app.get("/json")
 async def get_json(pivot=Query(None)):
     # check querystring for "?pivot" to pivot the data
+    with http_results_lock:
+        results = list(http_results)
     data = {}
     if pivot is not None:
-        for result in http_results:
+        for result in results:
             if (
                 result.result_state == TextDetectionTargetWithResult.ResultState.Success
                 or result.result_state
@@ -143,17 +145,19 @@ async def get_json(pivot=Query(None)):
             ):
                 data[result.name] = result.result
     else:
-        data = [result.to_dict() for result in http_results]
+        data = [result.to_dict() for result in results]
 
     return JSONResponse(content=data)
 
 
 @app.get("/xml")
 async def get_xml(pivot=Query(None)):
+    with http_results_lock:
+        results = list(http_results)
     root = ET.Element("data")
     if pivot is not None:
         data = {}
-        for result in http_results:
+        for result in results:
             if (
                 result.result_state == TextDetectionTargetWithResult.ResultState.Success
                 or result.result_state
@@ -165,7 +169,7 @@ async def get_xml(pivot=Query(None)):
             key_xml = "".join([word.title() for word in key.split(" ")])
             ET.SubElement(root, key_xml).text = data[key]
     else:
-        for targetWithResult in http_results:
+        for targetWithResult in results:
             resultEl = ET.SubElement(root, "result")
             resultEl.set("name", targetWithResult.name)
             resultEl.set("result", targetWithResult.result)
@@ -180,18 +184,20 @@ async def get_xml(pivot=Query(None)):
 
 @app.get("/csv")
 async def get_csv():
+    with http_results_lock:
+        results = list(http_results)
     output = StringIO()
     csv_writer = csv.writer(output)
     csv_writer.writerow(["Name", "Text", "X", "Y", "Width", "Height"])
-    for result in http_results:
+    for result in results:
         csv_writer.writerow(
             [
                 result.name,
                 result.result,
-                result.x,
-                result.y,
-                result.width,
-                result.height,
+                result.x(),
+                result.y(),
+                result.width(),
+                result.height(),
             ]
         )
     return Response(content=output.getvalue(), media_type="text/csv")
@@ -203,7 +209,10 @@ def is_port_in_use(port: int) -> bool:
 
 
 def start_http_server():
+    global server_thread
+
     def run_uvicorn():
+        global server_instance
         if is_port_in_use(PORT):
             logger.error(f"Port {PORT} is already in use")
             return
@@ -217,39 +226,33 @@ def start_http_server():
             log_config=None,
             lifespan="on",
         )
-        server = uvicorn.Server(config)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        server_instance = uvicorn.Server(config)
 
         logger.info(f"Server starting at port {PORT}")
         try:
-            loop.run_until_complete(server.serve())
+            server_instance.run()
         except Exception as e:
             logger.error(f"Error running server: {e}")
-        loop.close()
+        server_instance = None
         logger.info("Server thread stopped")
 
     # Start Uvicorn server in a separate thread
-    server_thread = threading.Thread(target=run_uvicorn)
+    server_thread = threading.Thread(
+        target=run_uvicorn, name="scoresight-legacy-http", daemon=True
+    )
     server_thread.start()
 
 
-@app.get("/shutdown")
-async def shutdown():
-    os.kill(os.getpid(), signal.SIGINT)
-    return {"message": "Initiating shutdown..."}
-
-
 def stop_http_server():
+    global server_thread
     logger.info("Stopping server...")
-    try:
-        conn = http.client.HTTPConnection("localhost", PORT)
-        conn.request("GET", "/shutdown")
-        conn.close()
-    except Exception as e:
-        pass
+    if server_instance is not None:
+        server_instance.should_exit = True
+    if server_thread is not None and server_thread.is_alive():
+        server_thread.join(timeout=5)
+    server_thread = None
 
 
 def update_http_server(results: list[TextDetectionTargetWithResult]):
-    global http_results
-    http_results = results
+    with http_results_lock:
+        http_results[:] = results

@@ -337,7 +337,7 @@ class TimerThread(QThread):
             # calculate the frame rate
             time_diff_ms = (
                 current_time - self.last_frame_timestamp
-            ).microseconds / 1000
+            ).total_seconds() * 1000
             if time_diff_ms > 0:
                 self.fps = (
                     self.fps_alpha * (1000 / time_diff_ms)
@@ -348,7 +348,7 @@ class TimerThread(QThread):
             # check that enough time has passed since last update
             time_diff_ms = (
                 current_time - self.last_update_timestamp
-            ).microseconds / 1000
+            ).total_seconds() * 1000
             if time_diff_ms < self.update_frame_interval:
                 # dump this frame since not enough time has passed
                 self.sleep_fps_target()
@@ -455,7 +455,9 @@ class TimerThread(QThread):
         logger.info("Camera thread stopped")
 
     def sleep_fps_target(self):
-        time_diff_ms = (datetime.now() - self.last_frame_timestamp).microseconds / 1000
+        time_diff_ms = (
+            datetime.now() - self.last_frame_timestamp
+        ).total_seconds() * 1000
         if time_diff_ms < self.frame_interval:
             time.sleep((self.frame_interval - time_diff_ms) / 1000.0)
 

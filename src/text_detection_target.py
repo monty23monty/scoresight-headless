@@ -46,16 +46,16 @@ class TextDetectionTarget(QRectF):
         width,
         height,
         name: str,
-        settings: dict = {},
-        mini_rects: list[QRectF] = [],
+        settings: dict | None = None,
+        mini_rects: list[QRectF] | None = None,
     ):
         super().__init__(x, y, width, height)
         self.name = name
-        self.settings = settings
+        self.settings = settings if settings is not None else {}
         self.ocrResultPerCharacterSmoother = OCRResultPerCharacterSmoother()
         self.last_image = None
         self.last_text = None
-        self.mini_rects: list[QRectF] = mini_rects
+        self.mini_rects: list[QRectF] = mini_rects if mini_rects is not None else []
 
 
 class TextDetectionTargetWithResult(TextDetectionTarget):

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>ScoreSight {{ layout }}</title>
+    <style>
+      html,body{margin:0;background:transparent;color:white;font-family:system-ui,sans-serif;overflow:hidden}
+      .scoreboard{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:3rem;padding:2rem;text-shadow:0 2px 8px #000}
+      .team{text-align:center}.score{font-size:8rem;font-variant-numeric:tabular-nums}.clock{font-size:6rem;font-variant-numeric:tabular-nums}
+      .stale{opacity:.45}
+    </style>
+  </head>
+  <body>
+    <main class="scoreboard" data-layout="{{ layout }}">
+      <section class="team"><div>HOME</div><div class="score" data-field="Home Score">0</div></section>
+      <div class="clock" data-field="Time">00:00</div>
+      <section class="team"><div>AWAY</div><div class="score" data-field="Away Score">0</div></section>
+    </main>
+    <script>
+      const token = new URLSearchParams(location.search).get('token') || '';
+      const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+      const socket = new WebSocket(`${scheme}://${location.host}/api/v1/events?token=${encodeURIComponent(token)}`);
+      socket.onmessage = ({data}) => {
+        const event = JSON.parse(data);
+        for (const field of event.fields || []) {
+          const node = [...document.querySelectorAll('[data-field]')].find(item => item.dataset.field === field.name);
+          if (!node || field.state === 'rejected' || field.state === 'empty') continue;
+          node.textContent = field.value;
+          node.classList.toggle('stale', field.state === 'stale');
+        }
+      };
+    </script>
+  </body>
+</html>
+
