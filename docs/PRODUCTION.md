@@ -63,12 +63,16 @@ In Portainer, set `SCORESIGHT_FAN_SITE_TOKEN` to the fan-site ingest token. Envi
 are visible to Portainer administrators and through `docker inspect`, so restrict Docker and
 Portainer access and never commit the populated `.env.production` file.
 
-Set `SCORESIGHT_IMAGE` to the immutable digest emitted by the successful tagged release workflow.
-Also set the Cloudflare team domain, Access application audience, public URL, hostname, origin and
-NPM network in `.env.production`. Validate and launch the stack:
+Set `SCORESIGHT_IMAGE` to the complete copy-ready value shown in the tagged workflow's job
+summary. It must be the `ghcr.io/...@sha256:...` manifest-list reference. Do not use a config,
+attestation, SBOM, or uploaded-artifact SHA: those are not runnable images and Docker reports
+`no command specified` when an attestation manifest is selected. Also set the Cloudflare team
+domain, Access application audience, public URL, hostname, origin and NPM network in
+`.env.production`. Validate and launch the stack:
 
 ```bash
 docker compose --env-file .env.production -f compose.production.yml config --quiet
+docker buildx imagetools inspect "$SCORESIGHT_IMAGE"
 docker compose --env-file .env.production -f compose.production.yml pull
 docker compose --env-file .env.production -f compose.production.yml up -d
 curl --fail http://127.0.0.1:8554/ >/dev/null || true

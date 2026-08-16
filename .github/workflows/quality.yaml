@@ -158,6 +158,17 @@ jobs:
           build-args: |
             VERSION=${{ github.ref_name }}
             REVISION=${{ github.sha }}
+      - name: Publish copy-ready deployment image
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          echo "### Copy-ready deployment image" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          echo "SCORESIGHT_IMAGE=${IMAGE}@${DIGEST}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "Use this manifest-list digest, not the config, attestation, SBOM, or artifact digest." >> "$GITHUB_STEP_SUMMARY"
       - uses: sigstore/cosign-installer@v3.9.2
       - name: Sign immutable image digest
         env:
