@@ -63,6 +63,10 @@ In Portainer, set `SCORESIGHT_FAN_SITE_TOKEN` to the fan-site ingest token. Envi
 are visible to Portainer administrators and through `docker inspect`, so restrict Docker and
 Portainer access and never commit the populated `.env.production` file.
 
+The production Compose file configures MediaMTX entirely through environment variables. This is
+intentional: Portainer-generated stack directories do not contain repository files, so do not add
+a relative `./packaging/docker/mediamtx.yml` bind mount to the stack.
+
 Set `SCORESIGHT_IMAGE` to the complete copy-ready value shown in the tagged workflow's job
 summary. It must be the `ghcr.io/...@sha256:...` manifest-list reference. Do not use a config,
 attestation, SBOM, or uploaded-artifact SHA: those are not runnable images and Docker reports

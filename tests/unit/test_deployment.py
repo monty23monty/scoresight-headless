@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from scoresight.core.deployment import DeploymentSettings
 from scoresight.core.secrets import REDACTED, read_secret_file, redact_mapping, restore_redacted
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_deployment_settings_derive_paths_and_origin(tmp_path) -> None:
@@ -38,3 +42,14 @@ def test_empty_secret_file_is_rejected(tmp_path) -> None:
     secret_file.write_text("\n", encoding="utf-8")
     with pytest.raises(ValueError, match="empty"):
         read_secret_file(secret_file)
+
+
+def test_production_mediamtx_is_portainer_self_contained() -> None:
+    compose = (PROJECT_ROOT / "compose.production.yml").read_text(encoding="utf-8")
+    mediamtx_service, separator, _ = compose.partition("\n  scoresight:")
+
+    assert separator
+    assert "./packaging/" not in mediamtx_service
+    assert "    volumes:" not in mediamtx_service
+    assert "MTX_RTSPTRANSPORTS: tcp" in mediamtx_service
+    assert "MTX_PATHS_SCOREBOARD_SOURCE: publisher" in mediamtx_service

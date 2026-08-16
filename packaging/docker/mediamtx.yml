@@ -4,7 +4,7 @@ writeTimeout: 10s
 writeQueueSize: 512
 rtsp: yes
 rtspAddress: :8554
-protocols: [tcp]
+rtspTransports: [tcp]
 rtmp: no
 hls: no
 webrtc: no
@@ -17,4 +17,3 @@ paths:
   scoreboard:
     source: publisher
     overridePublisher: true
-

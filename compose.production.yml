@@ -11,8 +11,25 @@ services:
       - ALL
     tmpfs:
       - /tmp:size=32m,mode=1777
-    volumes:
-      - ./packaging/docker/mediamtx.yml:/mediamtx.yml:ro
+    # Keep this service self-contained so Portainer does not require repository
+    # files to exist under its generated /data/compose directory.
+    environment:
+      MTX_LOGLEVEL: info
+      MTX_READTIMEOUT: 10s
+      MTX_WRITETIMEOUT: 10s
+      MTX_WRITEQUEUESIZE: "512"
+      MTX_RTSP: "yes"
+      MTX_RTSPADDRESS: :8554
+      MTX_RTSPTRANSPORTS: tcp
+      MTX_RTMP: "no"
+      MTX_HLS: "no"
+      MTX_WEBRTC: "no"
+      MTX_SRT: "no"
+      MTX_API: "no"
+      MTX_METRICS: "no"
+      MTX_PPROF: "no"
+      MTX_PATHS_SCOREBOARD_SOURCE: publisher
+      MTX_PATHS_SCOREBOARD_OVERRIDEPUBLISHER: "yes"
     ports:
       - 127.0.0.1:8554:8554
     networks:
