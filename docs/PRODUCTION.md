@@ -49,6 +49,27 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now scoresight-decklink-bridge.service
 ```
 
+Verify that the bridge is publishing before expecting ScoreSight readiness:
+
+```bash
+sudo systemctl status scoresight-decklink-bridge.service --no-pager
+sudo journalctl -u scoresight-decklink-bridge.service -n 100 --no-pager
+/opt/scoresight-decklink/bin/ffprobe -v error -rtsp_transport tcp \
+  -show_streams rtsp://127.0.0.1:8554/scoreboard
+```
+
+An RTSP `DESCRIBE 404 (Not Found)` from ScoreSight means MediaMTX is reachable but no publisher
+is currently supplying `/scoreboard`. Check the bridge journal for a DeckLink device, format, SDI
+signal, or FFmpeg error. To test the rest of the pipeline without DeckLink, publish a local video:
+
+```bash
+ffmpeg -re -stream_loop -1 -i /path/to/scoreboard-test.mp4 -an \
+  -c:v libx264 -preset ultrafast -tune zerolatency -r 30 -g 30 -bf 0 \
+  -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/scoreboard
+```
+
+Stop the test publisher with Ctrl+C before restarting the DeckLink bridge.
+
 ## 2. Docker deployment
 
 Create the external Nginx Proxy Manager network if it does not already exist, then copy the
