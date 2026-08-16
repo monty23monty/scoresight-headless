@@ -35,8 +35,6 @@ services:
       - /tmp:size=128m,mode=1777
     volumes:
       - scoresight-data:/var/lib/scoresight
-    secrets:
-      - fan_site_token
     environment:
       SCORESIGHT_AUTH_MODE: cloudflare_access
       SCORESIGHT_CF_TEAM_DOMAIN: ${SCORESIGHT_CF_TEAM_DOMAIN:?set Cloudflare team domain}
@@ -48,6 +46,7 @@ services:
       SCORESIGHT_JSON_LOGS: "true"
       SCORESIGHT_ACCESS_LOG: "false"
       SCORESIGHT_WEBSOCKET_LIMIT: "8"
+      SCORESIGHT_FAN_SITE_TOKEN: ${SCORESIGHT_FAN_SITE_TOKEN:?set fan-site token}
     expose:
       - "18099"
     cpus: 4.0
@@ -58,10 +57,6 @@ services:
 
 volumes:
   scoresight-data:
-
-secrets:
-  fan_site_token:
-    file: ${SCORESIGHT_FAN_TOKEN_FILE:-./secrets/fan_site_token}
 
 networks:
   capture:

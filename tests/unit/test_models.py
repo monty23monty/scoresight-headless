@@ -71,3 +71,25 @@ def test_fan_site_output_accepts_token_file() -> None:
         },
     )
     assert output.settings["token_file"] == "/run/secrets/fan_site_token"
+
+
+def test_fan_site_output_accepts_only_the_supported_token_environment() -> None:
+    output = OutputConfig(
+        kind="fan_site",
+        settings={
+            "endpoint": "wss://fan.example/ws/ocr",
+            "stream_id": "stream1",
+            "token_env": "SCORESIGHT_FAN_SITE_TOKEN",
+        },
+    )
+    assert output.settings["token_env"] == "SCORESIGHT_FAN_SITE_TOKEN"
+
+    with pytest.raises(ValidationError, match="SCORESIGHT_FAN_SITE_TOKEN"):
+        OutputConfig(
+            kind="fan_site",
+            settings={
+                "endpoint": "wss://fan.example/ws/ocr",
+                "stream_id": "stream1",
+                "token_env": "UNSAFE_ARBITRARY_ENVIRONMENT_VARIABLE",
+            },
+        )

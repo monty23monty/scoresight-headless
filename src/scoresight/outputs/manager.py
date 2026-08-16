@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 from scoresight.core.events import LatestValueBus
@@ -74,11 +75,17 @@ class OutputManager:
         if config.kind == "file":
             return FileOutput(config.id, Path(str(settings["path"])))
         if config.kind == "fan_site":
-            token = (
-                read_secret_file(str(settings["token_file"]))
-                if settings.get("token_file")
-                else str(settings["token"])
-            )
+            if settings.get("token_file"):
+                token = read_secret_file(str(settings["token_file"]))
+            elif settings.get("token"):
+                token = str(settings["token"])
+            else:
+                environment_name = str(settings["token_env"])
+                token = os.getenv(environment_name, "").strip()
+                if not token:
+                    raise ValueError(
+                        f"fan_site token environment variable is empty: {environment_name}"
+                    )
             return FanSiteWebSocketOutput(
                 config.id,
                 endpoint=str(settings["endpoint"]),

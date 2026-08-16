@@ -117,3 +117,36 @@ def test_fan_site_token_is_loaded_from_secret_file(tmp_path) -> None:
         )
     )
     assert output.token == "secret-from-file"
+
+
+def test_fan_site_token_is_loaded_from_environment(monkeypatch) -> None:
+    monkeypatch.setenv("SCORESIGHT_FAN_SITE_TOKEN", "secret-from-environment")
+    output = OutputManager._build(
+        OutputConfig(
+            id="fan",
+            kind="fan_site",
+            enabled=True,
+            settings={
+                "endpoint": "wss://fan.example/ws/ocr",
+                "stream_id": "stream",
+                "token_env": "SCORESIGHT_FAN_SITE_TOKEN",
+            },
+        )
+    )
+    assert output.token == "secret-from-environment"
+
+
+def test_fan_site_environment_token_must_not_be_empty(monkeypatch) -> None:
+    monkeypatch.delenv("SCORESIGHT_FAN_SITE_TOKEN", raising=False)
+    config = OutputConfig(
+        id="fan",
+        kind="fan_site",
+        enabled=True,
+        settings={
+            "endpoint": "wss://fan.example/ws/ocr",
+            "stream_id": "stream",
+            "token_env": "SCORESIGHT_FAN_SITE_TOKEN",
+        },
+    )
+    with pytest.raises(ValueError, match="environment variable is empty"):
+        OutputManager._build(config)

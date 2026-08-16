@@ -51,16 +51,17 @@ sudo systemctl enable --now scoresight-decklink-bridge.service
 
 ## 2. Docker deployment
 
-Create the external Nginx Proxy Manager network if it does not already exist, then create the
-fan-site secret without adding it to source control:
+Create the external Nginx Proxy Manager network if it does not already exist, then copy the
+environment template:
 
 ```bash
 docker network inspect proxy >/dev/null 2>&1 || docker network create proxy
-install -d -m 0700 secrets
-printf '%s' 'REPLACE_WITH_INGEST_TOKEN' > secrets/fan_site_token
-chmod 0600 secrets/fan_site_token
 cp .env.production.example .env.production
 ```
+
+In Portainer, set `SCORESIGHT_FAN_SITE_TOKEN` to the fan-site ingest token. Environment variables
+are visible to Portainer administrators and through `docker inspect`, so restrict Docker and
+Portainer access and never commit the populated `.env.production` file.
 
 Set `SCORESIGHT_IMAGE` to the immutable digest emitted by the successful tagged release workflow.
 Also set the Cloudflare team domain, Access application audience, public URL, hostname, origin and
@@ -79,8 +80,8 @@ Configure NPM to proxy the dedicated hostname to `scoresight:18099`, enable WebS
 the directives in `packaging/nginx/scoresight-advanced.conf`.
 
 On first start the container seeds `/var/lib/scoresight/config-v1.json` with the private RTSP
-source. Configure OCR regions in the operator UI. Configure the fan-site output using a secret
-reference, never the secret value:
+source. Configure OCR regions in the operator UI. Configure the fan-site output to read the token
+from the environment without copying its value into ScoreSight configuration:
 
 ```json
 {
@@ -89,7 +90,7 @@ reference, never the secret value:
   "settings": {
     "endpoint": "wss://fan.example/ws/ocr",
     "stream_id": "stream1",
-    "token_file": "/run/secrets/fan_site_token"
+    "token_env": "SCORESIGHT_FAN_SITE_TOKEN"
   },
   "field_mapping": {
     "Clock": "Clock.Text",

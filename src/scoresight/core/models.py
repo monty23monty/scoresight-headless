@@ -132,9 +132,21 @@ class OutputConfig(BaseModel):
             if not self.settings.get(key):
                 raise ValueError(f"{self.kind} output requires settings.{key}")
         if self.kind == "fan_site" and not (
-            self.settings.get("token") or self.settings.get("token_file")
+            self.settings.get("token")
+            or self.settings.get("token_file")
+            or self.settings.get("token_env")
         ):
-            raise ValueError("fan_site output requires settings.token or settings.token_file")
+            raise ValueError(
+                "fan_site output requires settings.token, settings.token_file, or "
+                "settings.token_env"
+            )
+        if self.kind == "fan_site" and self.settings.get("token_env") not in {
+            None,
+            "SCORESIGHT_FAN_SITE_TOKEN",
+        }:
+            raise ValueError(
+                "fan_site settings.token_env must be SCORESIGHT_FAN_SITE_TOKEN"
+            )
         return self
 
 
