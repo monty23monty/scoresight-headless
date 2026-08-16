@@ -19,7 +19,7 @@ ARG REVISION=unknown
 LABEL org.opencontainers.image.title="ScoreSight" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
-      org.opencontainers.image.source="https://github.com/monty23monty/scoresight"
+      org.opencontainers.image.source="https://github.com/monty23monty/scoresight-headless"
 ENV PATH=/opt/scoresight/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -27,6 +27,7 @@ ENV PATH=/opt/scoresight/.venv/bin:$PATH \
     SCORESIGHT_TESSDATA=/opt/scoresight/tesseract/tessdata
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends ca-certificates libglib2.0-0 libgomp1 liblept5 libtesseract5 tini \
+    && python -m pip uninstall --yes setuptools wheel pip \
     && groupadd --gid 10001 scoresight \
     && useradd --uid 10001 --gid scoresight --home-dir /nonexistent --shell /usr/sbin/nologin scoresight \
     && install -d -o scoresight -g scoresight /var/lib/scoresight \
