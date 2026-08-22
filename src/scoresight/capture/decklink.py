@@ -48,7 +48,9 @@ class DeckLinkCapture:
                 )
                 for mode in device.get("modes", [])
             )
-            devices.append(CaptureDevice(id=device["id"], name=device["name"], modes=modes))
+            devices.append(
+                CaptureDevice(id=device["id"], name=device["name"], modes=modes)
+            )
         return devices
 
     def open(self) -> None:

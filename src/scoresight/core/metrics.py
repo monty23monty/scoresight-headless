@@ -137,13 +137,19 @@ class ServiceMetrics:
 
     def render(self, adapters: Mapping[str, Any]) -> bytes:
         now = time.monotonic()
-        age = -1.0 if self.last_frame_monotonic is None else now - self.last_frame_monotonic
+        age = (
+            -1.0
+            if self.last_frame_monotonic is None
+            else now - self.last_frame_monotonic
+        )
         self.last_frame_age.set(age)
         state_values = {"running": 1, "stopped": 0, "degraded": -1}
         for adapter_id, adapter in adapters.items():
             kind = getattr(adapter, "kind", type(adapter).__name__)
             labels = {"output_id": adapter_id, "kind": kind}
-            self.output_state.labels(**labels).set(state_values.get(adapter.status.state, -1))
+            self.output_state.labels(**labels).set(
+                state_values.get(adapter.status.state, -1)
+            )
             self.output_sent.labels(**labels).set(adapter.status.sent)
             self.output_failed.labels(**labels).set(adapter.status.failed)
             last_ack = getattr(adapter, "last_ack_monotonic", None)

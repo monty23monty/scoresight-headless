@@ -45,7 +45,9 @@ class OpenCVCapture:
     def open(self) -> None:
         import cv2
 
-        is_network = isinstance(self.source, str) and self.source.lower().startswith("rtsp")
+        is_network = isinstance(self.source, str) and self.source.lower().startswith(
+            "rtsp"
+        )
         if is_network:
             os.environ.setdefault(
                 "OPENCV_FFMPEG_CAPTURE_OPTIONS", f"rtsp_transport;{self.rtsp_transport}"

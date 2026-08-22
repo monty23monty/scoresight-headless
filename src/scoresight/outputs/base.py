@@ -50,7 +50,9 @@ class OutputAdapter(ABC):
                 except Exception as exc:
                     self.status.failed += 1
                     self.status.consecutive_failures += 1
-                    delay = min(30.0, 0.25 * 2 ** (self.status.consecutive_failures - 1))
+                    delay = min(
+                        30.0, 0.25 * 2 ** (self.status.consecutive_failures - 1)
+                    )
                     self._retry_after = time.monotonic() + delay
                     self.status.state = "degraded"
                     self.status.message = str(exc)

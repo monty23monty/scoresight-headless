@@ -35,6 +35,7 @@ ocr = [
 ]
 desktop-legacy = ["pyside6>=6.7,<7", "opencv-python>=4.10,<6"]
 dev = [
+  "black==26.5.1",
   "mypy>=1.13,<2",
   "numpy>=1.26,<3",
   "opencv-python-headless>=4.10,<6",
@@ -68,6 +69,10 @@ markers = ["decklink_hardware: requires a physical DeckLink device and vendor ru
 target-version = "py311"
 line-length = 100
 exclude = ["src/ui_*.py"]
+
+[tool.black]
+target-version = ["py311"]
+exclude = "/ui_.*\\.py"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]

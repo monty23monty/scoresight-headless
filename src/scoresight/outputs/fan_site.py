@@ -73,7 +73,9 @@ class FanSiteWebSocketOutput(OutputAdapter):
             raise FanSiteProtocolError("fan-site WebSocket is not connected")
         raw = await asyncio.wait_for(self._connection.recv(), timeout=self.timeout)
         if isinstance(raw, bytes):
-            raise FanSiteProtocolError("fan site returned an unsupported binary message")
+            raise FanSiteProtocolError(
+                "fan site returned an unsupported binary message"
+            )
         try:
             response = json.loads(raw)
         except json.JSONDecodeError as exc:
@@ -105,7 +107,9 @@ class FanSiteWebSocketOutput(OutputAdapter):
             )
             response = await self._receive_object()
             if response.get("type") != "registered":
-                raise FanSiteProtocolError("fan site did not acknowledge OCR registration")
+                raise FanSiteProtocolError(
+                    "fan site did not acknowledge OCR registration"
+                )
         except Exception:
             await self._discard_connection()
             raise
@@ -132,7 +136,9 @@ class FanSiteWebSocketOutput(OutputAdapter):
             await self._connection.send(json.dumps({"type": "ocr", "values": values}))
             response = await self._receive_object()
             if response.get("type") != "ocr_update":
-                raise FanSiteProtocolError("fan site did not acknowledge the OCR update")
+                raise FanSiteProtocolError(
+                    "fan site did not acknowledge the OCR update"
+                )
         except Exception:
             await self._discard_connection()
             raise

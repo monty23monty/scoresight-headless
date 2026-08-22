@@ -10,7 +10,10 @@ from fastapi import HTTPException, Request, WebSocket, status
 
 from scoresight.core.deployment import DeploymentSettings
 from scoresight.core.models import SecurityConfig
-from scoresight.web.cloudflare import AccessAuthenticationError, CloudflareAccessVerifier
+from scoresight.web.cloudflare import (
+    AccessAuthenticationError,
+    CloudflareAccessVerifier,
+)
 
 ADMIN_COOKIE = "scoresight_admin"
 CSRF_COOKIE = "scoresight_csrf"
@@ -42,7 +45,9 @@ class SecurityDependencies:
 
     async def _cloudflare_identity(self, assertion: str | None) -> AuthIdentity:
         if self.access_verifier is None:
-            raise HTTPException(status_code=503, detail="Cloudflare authentication unavailable")
+            raise HTTPException(
+                status_code=503, detail="Cloudflare authentication unavailable"
+            )
         try:
             claims = await self.access_verifier.verify(assertion)
         except AccessAuthenticationError as exc:
@@ -61,11 +66,13 @@ class SecurityDependencies:
             request.state.identity = identity
             return identity
         security = self.get_security()
-        token = bearer_token(request.headers.get("Authorization")) or request.cookies.get(
-            ADMIN_COOKIE, ""
-        )
+        token = bearer_token(
+            request.headers.get("Authorization")
+        ) or request.cookies.get(ADMIN_COOKIE, "")
         if not hmac.compare_digest(token, security.admin_token):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="admin required")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="admin required"
+            )
         identity = AuthIdentity(subject="local-admin")
         request.state.identity = identity
         return identity
@@ -79,7 +86,9 @@ class SecurityDependencies:
         cookie = request.cookies.get(CSRF_COOKIE)
         header = request.headers.get("X-CSRF-Token")
         if not cookie or not header or not hmac.compare_digest(cookie, header):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="invalid CSRF token")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="invalid CSRF token"
+            )
         return identity
 
     async def require_read(self, request: Request) -> AuthIdentity:
@@ -91,7 +100,9 @@ class SecurityDependencies:
             or request.query_params.get("token")
             or request.cookies.get(ADMIN_COOKIE, "")
         )
-        if not constant_time_contains(supplied, [security.admin_token, *security.read_tokens]):
+        if not constant_time_contains(
+            supplied, [security.admin_token, *security.read_tokens]
+        ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="read token required"
             )
@@ -113,8 +124,14 @@ class SecurityDependencies:
             except HTTPException:
                 return False
         security = self.get_security()
-        token = websocket.query_params.get("token") or websocket.cookies.get(ADMIN_COOKIE) or ""
-        return constant_time_contains(token, [security.admin_token, *security.read_tokens])
+        token = (
+            websocket.query_params.get("token")
+            or websocket.cookies.get(ADMIN_COOKIE)
+            or ""
+        )
+        return constant_time_contains(
+            token, [security.admin_token, *security.read_tokens]
+        )
 
 
 def new_csrf_token() -> str:

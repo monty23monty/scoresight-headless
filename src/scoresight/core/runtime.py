@@ -33,7 +33,9 @@ class RuntimeController:
     async def start(self) -> None:
         if self._task is None:
             self._stop.clear()
-            self._task = asyncio.create_task(self._run_forever(), name="scoresight-runtime")
+            self._task = asyncio.create_task(
+                self._run_forever(), name="scoresight-runtime"
+            )
 
     async def stop(self) -> None:
         self._stop.set()
@@ -68,7 +70,9 @@ class RuntimeController:
                         pipeline = self._build_pipeline(config)
                     except Exception as exc:
                         ocr_error = f"{type(exc).__name__}: {exc}"
-                        logger.error("OCR unavailable; preview will continue: %s", ocr_error)
+                        logger.error(
+                            "OCR unavailable; preview will continue: %s", ocr_error
+                        )
                 failure_count = 0
                 last_error = ""
                 await self.service.publish_health(
@@ -100,17 +104,18 @@ class RuntimeController:
                     HealthSnapshot(
                         status="degraded",
                         capture=HealthComponent(status="down", message=str(exc)),
-                        ocr=HealthComponent(status="degraded", message="waiting for capture"),
+                        ocr=HealthComponent(
+                            status="degraded", message="waiting for capture"
+                        ),
                     )
                 )
                 with suppress(TimeoutError):
                     delay = min(
                         30.0,
-                        config.source.reconnect_seconds * 2 ** min(failure_count - 1, 5),
+                        config.source.reconnect_seconds
+                        * 2 ** min(failure_count - 1, 5),
                     )
-                    await asyncio.wait_for(
-                        self._stop.wait(), timeout=delay
-                    )
+                    await asyncio.wait_for(self._stop.wait(), timeout=delay)
             finally:
                 if source is not None:
                     await asyncio.to_thread(source.close)
@@ -155,7 +160,9 @@ class RuntimeController:
             return MockCapture()
         if source.kind == "opencv":
             device: str | int = (
-                int(source.device_id) if source.device_id.isdigit() else source.device_id
+                int(source.device_id)
+                if source.device_id.isdigit()
+                else source.device_id
             )
             return OpenCVCapture(device)
         if source.kind in {"rtsp", "file"}:
@@ -218,7 +225,9 @@ class RuntimeController:
         target_width = min(960, width)
         target_height = max(1, round(height * target_width / width))
         if target_width != width:
-            image = cv2.resize(image, (target_width, target_height), interpolation=cv2.INTER_AREA)
+            image = cv2.resize(
+                image, (target_width, target_height), interpolation=cv2.INTER_AREA
+            )
         ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 75])
         if not ok:
             raise RuntimeError("failed to encode preview frame")

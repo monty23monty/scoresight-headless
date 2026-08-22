@@ -50,9 +50,13 @@ class CloudflareAccessVerifier:
         try:
             header = jwt.get_unverified_header(token)
         except jwt.InvalidTokenError as exc:
-            raise AccessAuthenticationError("invalid Cloudflare Access token header") from exc
+            raise AccessAuthenticationError(
+                "invalid Cloudflare Access token header"
+            ) from exc
         if header.get("alg") != "RS256" or not header.get("kid"):
-            raise AccessAuthenticationError("unsupported Cloudflare Access signing header")
+            raise AccessAuthenticationError(
+                "unsupported Cloudflare Access signing header"
+            )
         kid = str(header["kid"])
         stale = time.monotonic() - self._loaded_at >= self.cache_seconds
         if force_refresh or kid not in self._keys or stale:
@@ -90,6 +94,10 @@ class CloudflareAccessVerifier:
             try:
                 return await self._decode(token, key)
             except jwt.InvalidTokenError as exc:
-                raise AccessAuthenticationError("invalid Cloudflare Access assertion") from exc
+                raise AccessAuthenticationError(
+                    "invalid Cloudflare Access assertion"
+                ) from exc
         except jwt.InvalidTokenError as exc:
-            raise AccessAuthenticationError("invalid Cloudflare Access assertion") from exc
+            raise AccessAuthenticationError(
+                "invalid Cloudflare Access assertion"
+            ) from exc

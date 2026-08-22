@@ -21,7 +21,9 @@ class ProfileStore:
         return sorted(path.stem for path in self.directory.glob("*.json"))
 
     def load(self, name: str) -> ServiceConfig:
-        return ServiceConfig.model_validate_json(self._path(name).read_text(encoding="utf-8"))
+        return ServiceConfig.model_validate_json(
+            self._path(name).read_text(encoding="utf-8")
+        )
 
     def save(self, name: str, config: ServiceConfig) -> None:
         path = self._path(name)

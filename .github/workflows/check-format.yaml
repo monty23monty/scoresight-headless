@@ -17,7 +17,7 @@ jobs:
           python-version: 3.x
 
       - name: Install dependencies
-        run: pip install black
+        run: pip install black==26.5.1
 
       - name: Check formatting
         run: black --check ./src --exclude '/ui_.*\.py'

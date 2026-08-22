@@ -20,7 +20,12 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
@@ -135,7 +140,9 @@ def create_app(
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=()"
+        )
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; img-src 'self' data: blob:; "
             "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
@@ -214,7 +221,9 @@ def create_app(
         target = "/login"
         if deployment.auth_mode == "cloudflare_access":
             assert deployment.cloudflare_team_domain is not None
-            target = f"{deployment.cloudflare_team_domain.rstrip('/')}/cdn-cgi/access/logout"
+            target = (
+                f"{deployment.cloudflare_team_domain.rstrip('/')}/cdn-cgi/access/logout"
+            )
         response = RedirectResponse(target, status_code=303)
         response.delete_cookie(ADMIN_COOKIE)
         response.delete_cookie(CSRF_COOKIE)
@@ -254,7 +263,9 @@ def create_app(
             )
             for adapter_id, adapter in output_manager.adapters.items()
         }
-        if any(component.status == "degraded" for component in snapshot.outputs.values()):
+        if any(
+            component.status == "degraded" for component in snapshot.outputs.values()
+        ):
             snapshot.status = "degraded"
         return snapshot.model_dump(mode="json")
 
@@ -271,7 +282,9 @@ def create_app(
             if service.metrics.last_frame_monotonic is None
             else now - service.metrics.last_frame_monotonic
         )
-        capture_ready = frame_age is not None and frame_age <= config.source.stale_after_seconds
+        capture_ready = (
+            frame_age is not None and frame_age <= config.source.stale_after_seconds
+        )
         ocr_age = (
             None
             if service.metrics.last_ocr_monotonic is None
@@ -279,7 +292,8 @@ def create_app(
         )
         ocr_ready = not config.regions or (
             ocr_age is not None
-            and ocr_age <= max(config.source.stale_after_seconds, 3.0 / config.ocr.target_hz)
+            and ocr_age
+            <= max(config.source.stale_after_seconds, 3.0 / config.ocr.target_hz)
         )
         ready = capture_ready and ocr_ready
         return JSONResponse(
@@ -292,8 +306,14 @@ def create_app(
         )
 
     @app.get("/api/v1/results")
-    async def results(_: None = Depends(security.require_read)) -> dict[str, Any] | None:
-        return service.latest_result.model_dump(mode="json") if service.latest_result else None
+    async def results(
+        _: None = Depends(security.require_read),
+    ) -> dict[str, Any] | None:
+        return (
+            service.latest_result.model_dump(mode="json")
+            if service.latest_result
+            else None
+        )
 
     @app.get("/api/v1/regions/{region_id}/filter-preview")
     async def region_filter_preview(
@@ -301,7 +321,9 @@ def create_app(
     ) -> Response:
         preview = service.latest_region_previews.get(region_id)
         if preview is None:
-            raise HTTPException(status_code=404, detail="filtered preview is not available")
+            raise HTTPException(
+                status_code=404, detail="filtered preview is not available"
+            )
         return Response(
             content=preview,
             media_type="image/png",
@@ -346,7 +368,9 @@ def create_app(
         ):
             try:
                 devices = await asyncio.to_thread(source.discover)
-                discovered.extend({"type": source_type, **asdict(device)} for device in devices)
+                discovered.extend(
+                    {"type": source_type, **asdict(device)} for device in devices
+                )
             except DeckLinkUnavailable as exc:
                 errors.append(str(exc))
             except Exception as exc:
@@ -371,7 +395,9 @@ def create_app(
         return profiles.list()
 
     @app.get("/api/v1/profiles/{name}")
-    async def get_profile(name: str, _: None = Depends(security.require_admin)) -> dict[str, Any]:
+    async def get_profile(
+        name: str, _: None = Depends(security.require_admin)
+    ) -> dict[str, Any]:
         try:
             return _safe_config(profiles.load(name))
         except FileNotFoundError as exc:
@@ -388,7 +414,9 @@ def create_app(
         return {"name": name}
 
     @app.delete("/api/v1/profiles/{name}")
-    async def delete_profile(name: str, _: None = Depends(security.require_admin_csrf)) -> Response:
+    async def delete_profile(
+        name: str, _: None = Depends(security.require_admin_csrf)
+    ) -> Response:
         try:
             profiles.delete(name)
         except FileNotFoundError as exc:
@@ -518,6 +546,8 @@ def create_app(
     async def scoreboard_preview(
         request: Request, layout: str, _: None = Depends(security.require_read)
     ) -> Response:
-        return templates.TemplateResponse(request, "scoreboard.html", {"layout": layout})
+        return templates.TemplateResponse(
+            request, "scoreboard.html", {"layout": layout}
+        )
 
     return app

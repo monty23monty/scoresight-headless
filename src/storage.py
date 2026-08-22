@@ -7,7 +7,6 @@ from defaults import default_info_for_box_name, normalize_settings_dict
 from text_detection_target import TextDetectionTarget
 from sc_logging import logger
 
-
 data_subscribers = {}
 
 

@@ -44,9 +44,11 @@ def restore_redacted(candidate: Any, current: Any) -> Any:
             if isinstance(item, dict) and item.get("id") is not None
         }
         return [
-            restore_redacted(item, current_by_id.get(item.get("id"), {}))
-            if isinstance(item, dict)
-            else item
+            (
+                restore_redacted(item, current_by_id.get(item.get("id"), {}))
+                if isinstance(item, dict)
+                else item
+            )
             for item in candidate
         ]
     return candidate

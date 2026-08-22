@@ -12,7 +12,9 @@ request_id_var: ContextVar[str] = ContextVar("scoresight_request_id", default=""
 _REDACTIONS = (
     re.compile(r"(?i)(authorization\s*[:=]\s*bearer\s+)[^\s,;]+"),
     re.compile(r"(?i)([?&](?:token|secret|password)=)[^&\s]+"),
-    re.compile(r'(?i)(["\'](?:token|secret|password|authorization)["\']\s*:\s*["\'])[^"\']+'),
+    re.compile(
+        r'(?i)(["\'](?:token|secret|password|authorization)["\']\s*:\s*["\'])[^"\']+'
+    ),
 )
 
 

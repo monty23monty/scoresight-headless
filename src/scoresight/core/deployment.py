@@ -47,7 +47,9 @@ class DeploymentSettings:
             trusted_proxies=os.getenv("SCORESIGHT_TRUSTED_PROXIES", "127.0.0.1"),
             cloudflare_team_domain=os.getenv("SCORESIGHT_CF_TEAM_DOMAIN") or None,
             cloudflare_audience=os.getenv("SCORESIGHT_CF_AUDIENCE") or None,
-            access_log=_bool(os.getenv("SCORESIGHT_ACCESS_LOG"), default=mode == "token"),
+            access_log=_bool(
+                os.getenv("SCORESIGHT_ACCESS_LOG"), default=mode == "token"
+            ),
             json_logs=_bool(os.getenv("SCORESIGHT_JSON_LOGS"), default=mode != "token"),
             websocket_limit=max(1, int(os.getenv("SCORESIGHT_WEBSOCKET_LIMIT", "8"))),
         )
@@ -66,7 +68,9 @@ class DeploymentSettings:
         if self.public_url:
             parsed = urlparse(self.public_url)
             if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-                raise ValueError("SCORESIGHT_PUBLIC_URL must be an absolute http(s) URL")
+                raise ValueError(
+                    "SCORESIGHT_PUBLIC_URL must be an absolute http(s) URL"
+                )
 
     @property
     def secure_cookies(self) -> bool:
@@ -79,7 +83,11 @@ class DeploymentSettings:
             return tuple(dict.fromkeys((*self.allowed_hosts, *health_hosts)))
         if self.public_url:
             hostname = urlparse(self.public_url).hostname
-            return tuple(dict.fromkeys((hostname, *health_hosts))) if hostname else health_hosts
+            return (
+                tuple(dict.fromkeys((hostname, *health_hosts)))
+                if hostname
+                else health_hosts
+            )
         return ()
 
     @property

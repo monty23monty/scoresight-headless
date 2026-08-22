@@ -20,7 +20,9 @@ class FileOutput(OutputAdapter):
 
     def _write(self, batch: ResultBatch) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd, temp_name = tempfile.mkstemp(dir=self.path.parent, prefix=f".{self.path.name}.")
+        fd, temp_name = tempfile.mkstemp(
+            dir=self.path.parent, prefix=f".{self.path.name}."
+        )
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 json.dump(batch.model_dump(mode="json"), handle, indent=2)

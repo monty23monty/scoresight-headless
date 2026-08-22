@@ -94,11 +94,13 @@ class RecognitionPipeline:
             if not candidate_value:
                 state = ResultState.EMPTY
             elif (
-                recognition.confidence is not None
-                and recognition.confidence < region.confidence_threshold
-            ) or not self._valid_field_type(
-                candidate_value, region.field_type
-            ) or re.fullmatch(region.format_regex, candidate_value) is None:
+                (
+                    recognition.confidence is not None
+                    and recognition.confidence < region.confidence_threshold
+                )
+                or not self._valid_field_type(candidate_value, region.field_type)
+                or re.fullmatch(region.format_regex, candidate_value) is None
+            ):
                 state = ResultState.REJECTED
             elif self._last_values.get(region.id) == candidate_value:
                 state = ResultState.UNCHANGED
@@ -106,7 +108,9 @@ class RecognitionPipeline:
                 pending_value, pending_count = self._pending_values.get(
                     region.id, ("", 0)
                 )
-                pending_count = pending_count + 1 if pending_value == candidate_value else 1
+                pending_count = (
+                    pending_count + 1 if pending_value == candidate_value else 1
+                )
                 self._pending_values[region.id] = (candidate_value, pending_count)
                 state = (
                     ResultState.OK

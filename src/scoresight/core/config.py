@@ -44,7 +44,9 @@ class ConfigStore:
                 raise RevisionConflict(
                     f"configuration revision is {current.revision}, not {expected_revision}"
                 )
-            updated = config.model_copy(update={"revision": current.revision + 1}, deep=True)
+            updated = config.model_copy(
+                update={"revision": current.revision + 1}, deep=True
+            )
             self._write(updated)
             self._config = updated
             return updated.model_copy(deep=True)

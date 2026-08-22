@@ -23,7 +23,9 @@ class HttpOutput(OutputAdapter):
         self.url = url
         self.method = method.upper()
         self.headers = headers or {}
-        self.client = httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=min(timeout, 0.5)))
+        self.client = httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout, connect=min(timeout, 0.5))
+        )
 
     async def send(self, batch: ResultBatch) -> None:
         response = await self.client.request(
@@ -63,7 +65,9 @@ class VMixOutput(OutputAdapter):
             accepted.add(ResultState.UNCHANGED)
         calls = []
         for field in batch.fields:
-            selected_name = self.field_mapping.get(field.id) or self.field_mapping.get(field.name)
+            selected_name = self.field_mapping.get(field.id) or self.field_mapping.get(
+                field.name
+            )
             if selected_name is None or field.state not in accepted:
                 continue
             calls.append(
@@ -110,7 +114,9 @@ class UnoOutput(OutputAdapter):
         if self.send_unchanged:
             accepted.add(ResultState.UNCHANGED)
         for field in batch.fields:
-            command = self.field_mapping.get(field.id) or self.field_mapping.get(field.name)
+            command = self.field_mapping.get(field.id) or self.field_mapping.get(
+                field.name
+            )
             if command is None or field.state not in accepted:
                 continue
             payload: dict[str, Any]
