@@ -88,6 +88,15 @@ class RecognitionPipeline:
                 value = value.lstrip("0") or "0"
             smoother = self._smoothers.get(region.id)
             if smoother is not None:
+                if (
+                    region.field_type == "time"
+                    and self._valid_field_type(value, "time")
+                    and smoother.history
+                    and re.sub(r"\d", "#", value)
+                    != re.sub(r"\d", "#", smoother.history[-1])
+                ):
+                    # Do not combine characters from different clock layouts.
+                    smoother.clear()
                 value = smoother.add(value)
 
             candidate_value = value
@@ -159,7 +168,11 @@ class RecognitionPipeline:
     def _normalize_candidate(value: str, field_type: str) -> str:
         value = value.strip()
         if field_type == "time":
-            value = re.sub(r"\s+", "", value).replace(".", ":").replace(",", ":")
+            value = re.sub(r"\s+", "", value).replace(",", ".")
+            # A single decimal digit is tenths; two digits retain the existing
+            # correction for a colon that OCR read as a decimal point.
+            if re.fullmatch(r"\d{1,3}\.\d{2}", value):
+                value = value.replace(".", ":")
             if value.isdigit() and 3 <= len(value) <= 4:
                 value = f"{value[:-2]}:{value[-2:]}"
         elif field_type == "number":
@@ -171,5 +184,5 @@ class RecognitionPipeline:
         if field_type == "number":
             return re.fullmatch(r"\d+", value) is not None
         if field_type == "time":
-            return re.fullmatch(r"\d{1,3}:[0-5]\d", value) is not None
+            return re.fullmatch(r"(?:\d{1,3}:[0-5]\d|[0-5]?\d\.\d)", value) is not None
         return True
