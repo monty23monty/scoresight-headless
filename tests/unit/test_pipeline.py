@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import numpy as np
+import pytest
 
 from scoresight.capture.base import FramePacket
 from scoresight.core.models import NormalizedRect, Point, RegionConfig, ResultState
@@ -32,6 +33,86 @@ class FakeBatchEngine(FakeEngine):
     def recognize_many(self, requests) -> list[Recognition]:
         self.batch_called = True
         return [next(self.recognitions) for _ in requests]
+
+
+@pytest.mark.parametrize("field_type,value", [("number", "27"), ("time", "1:49"), ("text", "A")])
+@pytest.mark.parametrize("smoothing_window", [1, 5])
+def test_confirmed_blank_clears_value_and_smoothing(
+    field_type, value, smoothing_window, monkeypatch
+):
+    class Clock:
+        tick = datetime(2026, 1, 1, tzinfo=UTC)
+
+        @classmethod
+        def now(cls, tz):
+            cls.tick += timedelta(seconds=1)
+            return cls.tick
+
+    monkeypatch.setattr("scoresight.ocr.pipeline.datetime", Clock)
+    region = RegionConfig(
+        id="field",
+        name="Field",
+        rect=NormalizedRect(x=0, y=0, width=0.5, height=0.5),
+        field_type=field_type,
+        format_regex=r".+",
+        confirmation_frames=2,
+        smoothing_window=smoothing_window,
+    )
+    pipeline = RecognitionPipeline(
+        FakeEngine(
+            [
+                Recognition(value, 0.99),
+                Recognition(value, 0.99),
+                Recognition("", 0),
+                Recognition(value, 0.99),
+                Recognition(" ", 0),
+                Recognition("", 0),
+                Recognition("", 0),
+                Recognition(value, 0.99),
+                Recognition(value, 0.99),
+            ]
+        ),
+        [region],
+    )
+    results = [pipeline.process(frame(i)).fields[0] for i in range(9)]
+    assert results[1].value == value
+    assert results[2].state == ResultState.PENDING
+    assert results[2].candidate_value == ""
+    assert results[2].value == value
+    assert results[3].state == ResultState.UNCHANGED
+    assert results[4].state == ResultState.PENDING
+    assert results[5].state == ResultState.OK
+    assert results[5].value == ""
+    assert results[5].changed_at > results[1].changed_at
+    assert results[6].state == ResultState.EMPTY
+    assert results[6].value == ""
+    assert results[6].changed_at == results[5].changed_at
+    assert results[7].state == ResultState.PENDING
+    assert results[7].value == ""
+    assert results[8].value == value
+
+
+def test_blank_initial_read_is_confirmed_without_turning_into_zero():
+    region = RegionConfig(
+        name="Score",
+        rect=NormalizedRect(x=0, y=0, width=0.5, height=0.5),
+        field_type="number",
+        remove_leading_zeros=True,
+        confirmation_frames=1,
+    )
+    pipeline = RecognitionPipeline(
+        FakeEngine(
+            [
+                Recognition("", 0),
+                Recognition("0", 0.99),
+                Recognition("", 0),
+            ]
+        ),
+        [region],
+    )
+    results = [pipeline.process(frame(i)).fields[0] for i in range(3)]
+    assert [result.value for result in results] == ["", "0", ""]
+    assert all(result.state == ResultState.OK for result in results)
 
 
 def frame(sequence: int = 1) -> FramePacket:

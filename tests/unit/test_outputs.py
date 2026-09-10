@@ -65,6 +65,24 @@ async def test_vmix_does_not_send_rejected_fields() -> None:
     await output.close()
 
 
+async def test_vmix_sends_confirmed_blank_to_clear_previous_text() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200)
+
+    output = VMixOutput("vmix", "localhost", 8099, "1", {"home": "Home.Text"})
+    await output.client.aclose()
+    output.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    value = batch()
+    await output.send(value)
+    value.fields[0].value = ""
+    await output.send(value)
+    await output.close()
+    assert [request.url.params["Value"] for request in requests] == ["12", ""]
+
+
 class FlakyOutput(OutputAdapter):
     def __init__(self, adapter_id: str) -> None:
         super().__init__(adapter_id)

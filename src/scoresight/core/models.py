@@ -172,7 +172,7 @@ class ServiceConfig(BaseModel):
 class ResultField(BaseModel):
     id: str
     name: str
-    # The stable value most recently accepted by validation and confidence filters.
+    # The stable accepted value; an empty string means confirmed absence of text.
     value: str
     # The value observed in the current frame, including rejected/empty candidates.
     candidate_value: str = ""

@@ -26,7 +26,7 @@
         const event = JSON.parse(data);
         for (const field of event.fields || []) {
           const node = [...document.querySelectorAll('[data-field]')].find(item => item.dataset.field === field.name);
-          if (!node || field.state === 'rejected' || field.state === 'empty') continue;
+          if (!node || field.state === 'rejected') continue;
           node.textContent = field.value;
           node.classList.toggle('stale', field.state === 'stale');
         }

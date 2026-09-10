@@ -90,7 +90,7 @@ async def test_fan_site_output_registers_and_sends_spec_payload() -> None:
         {"type": "register", "stream": "stream1", "role": "ocr"},
         {
             "type": "ocr",
-            "values": {"Clock.Text": "16:03", "score_a": "3"},
+            "values": {"Clock.Text": "16:03", "score_a": "3", "Away Score": ""},
         },
     ]
     assert details == {

@@ -88,12 +88,16 @@ class RecognitionPipeline:
                 value = value.lstrip("0") or "0"
             smoother = self._smoothers.get(region.id)
             if smoother is not None:
-                value = smoother.add(value)
+                if value:
+                    value = smoother.add(value)
+                else:
+                    # Missing characters must not be filled from older frames.
+                    smoother.clear()
 
             candidate_value = value
-            if not candidate_value:
-                state = ResultState.EMPTY
-            elif (
+            # Blank is a valid candidate, even for numeric/time fields and when
+            # the OCR engine reports zero confidence for an image with no text.
+            if candidate_value and (
                 (
                     recognition.confidence is not None
                     and recognition.confidence < region.confidence_threshold
@@ -103,14 +107,10 @@ class RecognitionPipeline:
             ):
                 state = ResultState.REJECTED
             elif self._last_values.get(region.id) == candidate_value:
-                state = ResultState.UNCHANGED
+                state = ResultState.UNCHANGED if candidate_value else ResultState.EMPTY
             else:
-                pending_value, pending_count = self._pending_values.get(
-                    region.id, ("", 0)
-                )
-                pending_count = (
-                    pending_count + 1 if pending_value == candidate_value else 1
-                )
+                pending_value, pending_count = self._pending_values.get(region.id, ("", 0))
+                pending_count = pending_count + 1 if pending_value == candidate_value else 1
                 self._pending_values[region.id] = (candidate_value, pending_count)
                 state = (
                     ResultState.OK

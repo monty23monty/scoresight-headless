@@ -11,7 +11,7 @@ from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed
 from websockets.typing import Origin
 
-from scoresight.core.models import ResultBatch
+from scoresight.core.models import ResultBatch, ResultState
 from scoresight.outputs.base import OutputAdapter
 
 
@@ -58,7 +58,11 @@ class FanSiteWebSocketOutput(OutputAdapter):
     def _values(self, batch: ResultBatch) -> dict[str, str]:
         values: dict[str, str] = {}
         for field in batch.fields:
-            if not field.value:
+            if not field.value and field.state not in {
+                ResultState.OK,
+                ResultState.EMPTY,
+                ResultState.UNCHANGED,
+            }:
                 continue
             target_name = self.field_mapping.get(field.id)
             if target_name is None:
@@ -73,9 +77,7 @@ class FanSiteWebSocketOutput(OutputAdapter):
             raise FanSiteProtocolError("fan-site WebSocket is not connected")
         raw = await asyncio.wait_for(self._connection.recv(), timeout=self.timeout)
         if isinstance(raw, bytes):
-            raise FanSiteProtocolError(
-                "fan site returned an unsupported binary message"
-            )
+            raise FanSiteProtocolError("fan site returned an unsupported binary message")
         try:
             response = json.loads(raw)
         except json.JSONDecodeError as exc:
@@ -101,15 +103,11 @@ class FanSiteWebSocketOutput(OutputAdapter):
         self.connections += 1
         try:
             await self._connection.send(
-                json.dumps(
-                    {"type": "register", "stream": self.stream_id, "role": "ocr"}
-                )
+                json.dumps({"type": "register", "stream": self.stream_id, "role": "ocr"})
             )
             response = await self._receive_object()
             if response.get("type") != "registered":
-                raise FanSiteProtocolError(
-                    "fan site did not acknowledge OCR registration"
-                )
+                raise FanSiteProtocolError("fan site did not acknowledge OCR registration")
         except Exception:
             await self._discard_connection()
             raise
@@ -136,9 +134,7 @@ class FanSiteWebSocketOutput(OutputAdapter):
             await self._connection.send(json.dumps({"type": "ocr", "values": values}))
             response = await self._receive_object()
             if response.get("type") != "ocr_update":
-                raise FanSiteProtocolError(
-                    "fan site did not acknowledge the OCR update"
-                )
+                raise FanSiteProtocolError("fan site did not acknowledge the OCR update")
         except Exception:
             await self._discard_connection()
             raise

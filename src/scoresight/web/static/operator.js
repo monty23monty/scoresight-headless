@@ -11,6 +11,9 @@ let latestResultSequence = 0;
 let regionInteraction = null;
 let lastFilteredPreviewAt = 0;
 const acceptedPreviews = new Map();
+const acceptedPreviewCaptures = new Set();
+const resultRows = new Map();
+let previewDecodePending = false;
 
 const byId = (id) => document.getElementById(id);
 const canvas = byId('preview');
@@ -92,7 +95,7 @@ function pruneAcceptedPreviews() {
 }
 
 async function captureAcceptedPreview(field) {
-  if (!previewBitmap) return false;
+  if (!previewBitmap || acceptedPreviewCaptures.has(field.id)) return false;
   const region = config.regions.find((candidate) => candidate.id === field.id);
   if (!region) return false;
   const sourceWidth = previewBitmap.width;
@@ -101,13 +104,20 @@ async function captureAcceptedPreview(field) {
   const y = Math.max(0, Math.round(region.rect.y * sourceHeight));
   const width = Math.max(1, Math.min(sourceWidth - x, Math.round(region.rect.width * sourceWidth)));
   const height = Math.max(1, Math.min(sourceHeight - y, Math.round(region.rect.height * sourceHeight)));
+  acceptedPreviewCaptures.add(field.id);
   try {
     const snapshot = await createImageBitmap(previewBitmap, x, y, width, height);
+    if (!config.regions.includes(region)) {
+      snapshot.close();
+      return false;
+    }
     acceptedPreviews.get(field.id)?.close();
     acceptedPreviews.set(field.id, snapshot);
     return true;
   } catch {
     return false;
+  } finally {
+    acceptedPreviewCaptures.delete(field.id);
   }
 }
 
@@ -128,37 +138,50 @@ function drawAcceptedPreview(canvasNode, bitmap) {
 }
 
 function renderResults(fields) {
-  byId('results').replaceChildren(...fields.map((field) => {
-    const row = document.createElement('tr');
-    const previewCell = document.createElement('td');
-    const snapshot = acceptedPreviews.get(field.id);
-    if (snapshot) {
+  const activeIds = new Set(fields.map((field) => field.id));
+  for (const [id, entry] of resultRows) {
+    if (!activeIds.has(id)) {
+      // Release the canvas backing store immediately, rather than waiting for GC.
+      entry.thumbnail.width = entry.thumbnail.height = 0;
+      entry.row.remove();
+      resultRows.delete(id);
+    }
+  }
+  fields.forEach((field, index) => {
+    let entry = resultRows.get(field.id);
+    if (!entry) {
+      const row = document.createElement('tr');
+      const previewCell = document.createElement('td');
       const thumbnail = document.createElement('canvas');
       thumbnail.width = 192;
       thumbnail.height = 96;
       thumbnail.className = 'result-thumbnail';
       thumbnail.setAttribute('role', 'img');
-      thumbnail.setAttribute('aria-label', `Last accepted frame for ${field.name}`);
-      drawAcceptedPreview(thumbnail, snapshot);
-      previewCell.append(thumbnail);
-    } else {
-      previewCell.textContent = '—';
-      previewCell.className = 'result-preview-empty';
+      const placeholder = document.createElement('span');
+      placeholder.textContent = '—';
+      previewCell.append(thumbnail, placeholder);
+      row.append(previewCell);
+      const cells = Array.from({length: 5}, () => document.createElement('td'));
+      row.append(...cells);
+      entry = {row, thumbnail, placeholder, cells, snapshot: null};
+      resultRows.set(field.id, entry);
     }
-    row.append(previewCell);
-    for (const value of [
+    const snapshot = acceptedPreviews.get(field.id);
+    entry.thumbnail.style.display = snapshot ? '' : 'none';
+    entry.placeholder.hidden = Boolean(snapshot);
+    entry.thumbnail.setAttribute('aria-label', `Last accepted frame for ${field.name}`);
+    if (snapshot && snapshot !== entry.snapshot) drawAcceptedPreview(entry.thumbnail, snapshot);
+    entry.snapshot = snapshot;
+    [
       field.name,
       field.value,
       field.candidate_value || '—',
       field.state,
       field.confidence == null ? '—' : field.confidence.toFixed(2),
-    ]) {
-      const cell = document.createElement('td');
-      cell.textContent = value;
-      row.append(cell);
-    }
-    return row;
-  }));
+    ].forEach((value, cellIndex) => { entry.cells[cellIndex].textContent = value; });
+    const body = byId('results');
+    if (body.children[index] !== entry.row) body.insertBefore(entry.row, body.children[index] || null);
+  });
 }
 
 function updateRegionEditor() {
@@ -452,7 +475,7 @@ byId('reset-transform').onclick = () => {
   toast('Transform reset. Save, then redraw regions on the source preview');
 };
 byId('clear-selection').onclick = () => { selectedId = null; updateRegionEditor(); render(); };
-byId('delete-region').onclick = () => { if (!selectedId) return; config.regions = config.regions.filter((region) => region.id !== selectedId); selectedId = null; updateRegionEditor(); render(); };
+byId('delete-region').onclick = () => { if (!selectedId) return; config.regions = config.regions.filter((region) => region.id !== selectedId); selectedId = null; pruneAcceptedPreviews(); updateRegionEditor(); render(); };
 byId('region-fields').addEventListener('input', () => { collectRegion(); render(); });
 
 byId('save-config').onclick = async () => {
@@ -530,21 +553,34 @@ function connectPreview() {
       } catch {}
       return;
     }
-    const nextPreviewBitmap = await createImageBitmap(data);
-    updatePreviewGeometry(nextPreviewBitmap.width, nextPreviewBitmap.height);
-    const previousPreviewBitmap = previewBitmap;
-    previewBitmap = nextPreviewBitmap;
-    previousPreviewBitmap?.close();
-    byId('preview-empty').hidden = true;
-    render();
-    const missingAccepted = latestResultFields.filter(
-      (field) =>
-        !acceptedPreviews.has(field.id)
-        && (field.state === 'ok' || field.state === 'unchanged'),
-    );
-    if (missingAccepted.length) {
-      await Promise.all(missingAccepted.map(captureAcceptedPreview));
-      renderResults(latestResultFields);
+    // Drop frames while decoding; WebSocket handlers do not await each other.
+    if (previewDecodePending) return;
+    previewDecodePending = true;
+    try {
+      const nextPreviewBitmap = await createImageBitmap(data);
+      if (socket.readyState !== WebSocket.OPEN) {
+        nextPreviewBitmap.close();
+        return;
+      }
+      updatePreviewGeometry(nextPreviewBitmap.width, nextPreviewBitmap.height);
+      const previousPreviewBitmap = previewBitmap;
+      previewBitmap = nextPreviewBitmap;
+      previousPreviewBitmap?.close();
+      byId('preview-empty').hidden = true;
+      render();
+      const missingAccepted = latestResultFields.filter(
+        (field) =>
+          !acceptedPreviews.has(field.id)
+          && (field.state === 'ok' || field.state === 'unchanged'),
+      );
+      if (missingAccepted.length) {
+        await Promise.all(missingAccepted.map(captureAcceptedPreview));
+        renderResults(latestResultFields);
+      }
+    } catch {
+      // A corrupt frame must not stop subsequent preview updates.
+    } finally {
+      previewDecodePending = false;
     }
   };
   socket.onclose = () => setTimeout(connectPreview, 1500);
