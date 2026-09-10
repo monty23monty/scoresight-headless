@@ -316,3 +316,70 @@ def test_pipeline_uses_batch_engine_when_available() -> None:
     pipeline = RecognitionPipeline(engine, [region])
     assert pipeline.process(frame()).fields[0].value == "8"
     assert engine.batch_called
+
+
+@pytest.mark.parametrize("smoothing_window", [1, 3])
+def test_clock_switches_between_minutes_and_tenths(smoothing_window: int) -> None:
+    region = RegionConfig(
+        id="clock",
+        name="Clock",
+        rect=NormalizedRect(x=0, y=0, width=0.5, height=0.5),
+        field_type="time",
+        confirmation_frames=2,
+        smoothing_window=smoothing_window,
+    )
+    values = ["01:00", "59.9", "09.9", "9.8", "0.0", "10:00"]
+    pipeline = RecognitionPipeline(
+        FakeEngine([Recognition(value, 0.99) for value in values for _ in range(4)]),
+        [region],
+    )
+
+    for value in values:
+        results = [pipeline.process(frame()).fields[0] for _ in range(4)]
+        assert all(result.state != ResultState.REJECTED for result in results)
+        assert results[-1].value == value
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("59.9", "59.9"),
+        (" 5 9 . 8 ", "59.8"),
+        ("09.9", "09.9"),
+        ("9.8", "9.8"),
+        ("00.0", "00.0"),
+        ("0.0", "0.0"),
+        ("59,9", "59.9"),
+        ("12.34", "12:34"),
+        ("12,34", "12:34"),
+        ("1234", "12:34"),
+    ],
+)
+def test_clock_preserves_tenths_and_normalizes_minutes(text: str, expected: str) -> None:
+    region = RegionConfig(
+        name="Clock",
+        rect=NormalizedRect(x=0, y=0, width=0.5, height=0.5),
+        field_type="time",
+        confirmation_frames=1,
+    )
+    pipeline = RecognitionPipeline(FakeEngine([Recognition(text, 0.99)]), [region])
+    result = pipeline.process(frame()).fields[0]
+    assert result.state == ResultState.OK
+    assert result.value == expected
+
+
+@pytest.mark.parametrize("text", ["60.0", "99.9", "123.4", "59.", ".9", "59:9", "-1.0"])
+def test_clock_rejects_invalid_tenths_without_replacing_accepted_value(text: str) -> None:
+    region = RegionConfig(
+        name="Clock",
+        rect=NormalizedRect(x=0, y=0, width=0.5, height=0.5),
+        field_type="time",
+        confirmation_frames=1,
+    )
+    pipeline = RecognitionPipeline(
+        FakeEngine([Recognition("01:00", 0.99), Recognition(text, 0.99)]), [region]
+    )
+    pipeline.process(frame())
+    result = pipeline.process(frame()).fields[0]
+    assert result.state == ResultState.REJECTED
+    assert result.value == "01:00"

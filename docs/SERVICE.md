@@ -74,6 +74,9 @@ For each region, choose `Clock / time`, `Number / score`, or `Free text`. Clock 
 number fields apply a Tesseract character whitelist and built-in validation in
 addition to the optional regular expression. `Confirm frames` controls how many
 consecutive matching candidates are required before a new value becomes accepted.
+Clock fields support both `mm:ss` and seconds with tenths below one minute, such as
+`01:00` → `59.9` → `09.9` → `0.0`, preserving the decimal point in the output.
+Any custom regular expression must allow both formats (or use the default `^.*$`).
 The selected-region panel shows the exact filtered OCR input, the current candidate,
 and the stable last accepted value.
 

@@ -120,8 +120,28 @@ jobs:
           format: sarif
           output: trivy-results.sarif
           severity: HIGH,CRITICAL
+          limit-severities-for-sarif: true
           ignore-unfixed: true
           exit-code: "1"
+      - name: Show container scan findings
+        if: ${{ always() && hashFiles('trivy-results.sarif') != '' }}
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("trivy-results.sarif").read_text())
+          findings = [result for run in report.get("runs", []) for result in run.get("results", [])]
+          print(f"Container scan findings: {len(findings)}")
+          for result in findings:
+              print(f"{result.get('ruleId', 'unknown')}: {result.get('message', {}).get('text', '')}")
+          PY
+      - name: Save container scan report
+        uses: actions/upload-artifact@v4
+        if: ${{ always() && hashFiles('trivy-results.sarif') != '' }}
+        with:
+          name: container-scan-report
+          path: trivy-results.sarif
       - uses: github/codeql-action/upload-sarif@v3
         if: ${{ always() && hashFiles('trivy-results.sarif') != '' }}
         with:
