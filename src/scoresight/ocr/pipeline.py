@@ -89,6 +89,15 @@ class RecognitionPipeline:
             smoother = self._smoothers.get(region.id)
             if smoother is not None:
                 if value:
+                    if (
+                        region.field_type == "time"
+                        and smoother.history
+                        and re.sub(r"\d", "#", smoother.history[-1])
+                        != re.sub(r"\d", "#", value)
+                    ):
+                        # Clock formats change below a minute and at ten seconds.
+                        # Characters from different positions cannot be averaged.
+                        smoother.clear()
                     value = smoother.add(value)
                 else:
                     # Missing characters must not be filled from older frames.
@@ -109,8 +118,12 @@ class RecognitionPipeline:
             elif self._last_values.get(region.id) == candidate_value:
                 state = ResultState.UNCHANGED if candidate_value else ResultState.EMPTY
             else:
-                pending_value, pending_count = self._pending_values.get(region.id, ("", 0))
-                pending_count = pending_count + 1 if pending_value == candidate_value else 1
+                pending_value, pending_count = self._pending_values.get(
+                    region.id, ("", 0)
+                )
+                pending_count = (
+                    pending_count + 1 if pending_value == candidate_value else 1
+                )
                 self._pending_values[region.id] = (candidate_value, pending_count)
                 state = (
                     ResultState.OK
@@ -159,7 +172,11 @@ class RecognitionPipeline:
     def _normalize_candidate(value: str, field_type: str) -> str:
         value = value.strip()
         if field_type == "time":
-            value = re.sub(r"\s+", "", value).replace(".", ":").replace(",", ":")
+            value = re.sub(r"\s+", "", value).replace(",", ".")
+            # One fractional digit is seconds/tenths; two digits after a dot
+            # are the OCR engine's alternative spelling of minutes:seconds.
+            if re.fullmatch(r"\d{1,3}\.\d{2}", value):
+                value = value.replace(".", ":")
             if value.isdigit() and 3 <= len(value) <= 4:
                 value = f"{value[:-2]}:{value[-2:]}"
         elif field_type == "number":
@@ -171,5 +188,5 @@ class RecognitionPipeline:
         if field_type == "number":
             return re.fullmatch(r"\d+", value) is not None
         if field_type == "time":
-            return re.fullmatch(r"\d{1,3}:[0-5]\d", value) is not None
+            return re.fullmatch(r"(?:\d{1,3}:[0-5]\d|[0-5]?\d\.\d)", value) is not None
         return True
