@@ -25,8 +25,9 @@ ENV PATH=/opt/scoresight/.venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     SCORESIGHT_DATA_DIR=/var/lib/scoresight \
     SCORESIGHT_TESSDATA=/opt/scoresight/tesseract/tessdata
+# Explicitly refresh PCRE2 inherited from the pinned base image for Debian fixes.
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates libglib2.0-0 libgomp1 liblept5 libtesseract5 tini \
+    && apt-get install --yes --no-install-recommends ca-certificates libglib2.0-0 libgomp1 liblept5 libpcre2-8-0 libtesseract5 tini \
     && python -m pip uninstall --yes setuptools wheel pip \
     && groupadd --gid 10001 scoresight \
     && useradd --uid 10001 --gid scoresight --home-dir /nonexistent --shell /usr/sbin/nologin scoresight \
