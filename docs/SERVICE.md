@@ -54,7 +54,9 @@ components the service stays available and reports capture health as degraded.
 
 - `GET /api/v1/health` and `GET /api/v1/results` provide snapshots.
 - `WS /api/v1/events` publishes an initial snapshot followed by latest-only batches.
-- `WS /api/v1/preview` carries metadata and JPEG preview frames.
+- `WS /api/v1/preview` carries metadata and JPEG preview frames. The dashboard uses
+  `?flow_control=ack` and sends `next` after consuming each image; only the latest
+  pending frame is retained until then. Existing streaming clients remain supported.
 - `/api/v1/config`, `/sources`, `/profiles`, and `/outputs` support the operator UI.
 - `/preview/default?token=...` is the transparent HTML scoreboard view.
 - `/metrics` exposes Prometheus text metrics.
@@ -74,11 +76,20 @@ For each region, choose `Clock / time`, `Number / score`, or `Free text`. Clock 
 number fields apply a Tesseract character whitelist and built-in validation in
 addition to the optional regular expression. `Confirm frames` controls how many
 consecutive matching candidates are required before a new value becomes accepted.
+For clock fields, confirmation follows whole readings that agree with the elapsed
+capture time, so moving tenths can confirm without repeating identical text.
+Clock fields bypass character smoothing, which can invent times at digit rollovers.
+Large jumps require at least three consistent readings, allowing clock resets while
+holding the last accepted time through short OCR glitches. Paused and count-up
+clocks are supported too; this does not extrapolate times when OCR is missing.
 Clock fields support both `mm:ss` and seconds with tenths below one minute, such as
 `01:00` → `59.9` → `09.9` → `0.0`, preserving the decimal point in the output.
 Any custom regular expression must allow both formats (or use the default `^.*$`).
 The selected-region panel shows the exact filtered OCR input, the current candidate,
 and the stable last accepted value.
+The dashboard keeps one filtered-image request in flight, releases decoded images
+after drawing, and pauses its live connections while hidden. Returning to the tab
+reconnects to the latest state; background OCR and outputs continue on the service.
 
 ## Live fan-site WebSocket output
 

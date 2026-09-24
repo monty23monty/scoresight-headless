@@ -14,6 +14,15 @@ const acceptedPreviews = new Map();
 const acceptedPreviewCaptures = new Set();
 const resultRows = new Map();
 let previewDecodePending = false;
+let filteredPreviewPending = false;
+let filteredPreviewController = null;
+let previewSocket = null;
+let resultSocket = null;
+let previewReconnect = null;
+let resultReconnect = null;
+let pageActive = true;
+let outputStatusPending = false;
+let previewGeneration = 0;
 
 const byId = (id) => document.getElementById(id);
 const canvas = byId('preview');
@@ -77,11 +86,48 @@ function updateRegionRuntime(forcePreview = false) {
   byId('selected-accepted-value').textContent = field?.value || '—';
   byId('selected-candidate-value').textContent = field?.candidate_value || '—';
   byId('filtered-preview-state').textContent = field?.state || 'Waiting';
-  if (!region || !latestResultSequence) return;
+  if (!region || !latestResultSequence || document.hidden || !pageActive) return;
   const now = performance.now();
-  if (!forcePreview && now - lastFilteredPreviewAt < 180) return;
+  if (filteredPreviewPending || (!forcePreview && now - lastFilteredPreviewAt < 250)) return;
   lastFilteredPreviewAt = now;
-  byId('filtered-preview').src = `/api/v1/regions/${encodeURIComponent(region.id)}/filter-preview?sequence=${latestResultSequence}`;
+  refreshFilteredPreview(region);
+}
+
+async function refreshFilteredPreview(region) {
+  filteredPreviewPending = true;
+  const controller = new AbortController();
+  filteredPreviewController = controller;
+  let bitmap = null;
+  try {
+    const response = await fetch(`/api/v1/regions/${encodeURIComponent(region.id)}/filter-preview`, {
+      cache: 'no-store', signal: controller.signal,
+    });
+    if (!response.ok) throw new Error('Preview unavailable');
+    bitmap = await createImageBitmap(await response.blob());
+    if (controller.signal.aborted || selectedRegion() !== region || document.hidden || !pageActive) return;
+    const node = byId('filtered-preview');
+    const scale = Math.min(1, 960 / bitmap.width, 540 / bitmap.height);
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    if (node.width !== width) node.width = width;
+    if (node.height !== height) node.height = height;
+    node.getContext('2d').drawImage(bitmap, 0, 0, width, height);
+    node.hidden = false;
+    byId('filtered-preview-empty').hidden = true;
+  } catch {
+    if (!controller.signal.aborted && selectedRegion() === region) clearFilteredPreview();
+  } finally {
+    bitmap?.close();
+    filteredPreviewPending = false;
+    if (filteredPreviewController === controller) filteredPreviewController = null;
+  }
+}
+
+function clearFilteredPreview() {
+  const node = byId('filtered-preview');
+  node.width = node.height = 0;
+  node.hidden = true;
+  byId('filtered-preview-empty').hidden = false;
 }
 
 function pruneAcceptedPreviews() {
@@ -105,9 +151,10 @@ async function captureAcceptedPreview(field) {
   const width = Math.max(1, Math.min(sourceWidth - x, Math.round(region.rect.width * sourceWidth)));
   const height = Math.max(1, Math.min(sourceHeight - y, Math.round(region.rect.height * sourceHeight)));
   acceptedPreviewCaptures.add(field.id);
+  const generation = previewGeneration;
   try {
     const snapshot = await createImageBitmap(previewBitmap, x, y, width, height);
-    if (!config.regions.includes(region)) {
+    if (!config.regions.includes(region) || generation !== previewGeneration || document.hidden || !pageActive) {
       snapshot.close();
       return false;
     }
@@ -138,6 +185,7 @@ function drawAcceptedPreview(canvasNode, bitmap) {
 }
 
 function renderResults(fields) {
+  if (document.hidden || !pageActive) fields = [];
   const activeIds = new Set(fields.map((field) => field.id));
   for (const [id, entry] of resultRows) {
     if (!activeIds.has(id)) {
@@ -185,6 +233,8 @@ function renderResults(fields) {
 }
 
 function updateRegionEditor() {
+  filteredPreviewController?.abort();
+  clearFilteredPreview();
   const region = selectedRegion();
   byId('region-empty').hidden = Boolean(region);
   byId('region-fields').disabled = !region;
@@ -195,6 +245,7 @@ function updateRegionEditor() {
   byId('region-confidence').value = region.confidence_threshold;
   byId('region-confirmation').value = region.confirmation_frames || 2;
   byId('region-smoothing').value = region.smoothing_window;
+  byId('region-smoothing').disabled = region.field_type === 'time';
   byId('region-threshold').value = region.preprocess.threshold_method;
   byId('region-dilate').value = region.preprocess.dilate_iterations;
   byId('region-vscale').value = region.preprocess.vertical_scale;
@@ -209,6 +260,7 @@ function collectRegion() {
   if (!region) return;
   region.name = byId('region-name').value;
   region.field_type = byId('region-field-type').value;
+  byId('region-smoothing').disabled = region.field_type === 'time';
   region.format_regex = byId('region-regex').value;
   region.confidence_threshold = Number(byId('region-confidence').value);
   region.confirmation_frames = Number(byId('region-confirmation').value);
@@ -506,28 +558,43 @@ byId('refresh-profiles').onclick = () => refreshProfiles().catch((error) => toas
 byId('save-profile').onclick = async () => { try { const name = byId('profile-name').value; await api(`/api/v1/profiles/${encodeURIComponent(name)}`, {method: 'PUT'}); await refreshProfiles(); toast('Profile saved'); } catch (error) { toast(error.message, true); } };
 
 async function refreshOutputStatus() {
-  const statuses = await api('/api/v1/outputs');
-  byId('output-status').replaceChildren(...Object.entries(statuses).map(([adapterId, status]) => {
-    const item = document.createElement('li');
-    const configured = config.outputs.find((output) => output.id === adapterId);
-    const label = document.createElement('span');
-    label.textContent = `${configured?.kind || adapterId}: ${status.state}`;
-    const detail = document.createElement('span');
-    const ack = status.details || {};
-    const ignored = ack.ignored_fields?.length ? ` · ignored ${ack.ignored_fields.join(', ')}` : '';
-    const conflicts = ack.conflict_fields?.length ? ` · conflicts ${ack.conflict_fields.join(', ')}` : '';
-    detail.textContent = `${ack.live_data_mode || status.message || `sent ${status.sent}`}${ignored}${conflicts}`;
-    item.append(label, detail);
-    return item;
-  }));
+  if (outputStatusPending || document.hidden || !pageActive) return;
+  outputStatusPending = true;
+  try {
+    const statuses = await api('/api/v1/outputs');
+    byId('output-status').replaceChildren(...Object.entries(statuses).map(([adapterId, status]) => {
+      const item = document.createElement('li');
+      const configured = config.outputs.find((output) => output.id === adapterId);
+      const label = document.createElement('span');
+      label.textContent = `${configured?.kind || adapterId}: ${status.state}`;
+      const detail = document.createElement('span');
+      const ack = status.details || {};
+      const ignored = ack.ignored_fields?.length ? ` · ignored ${ack.ignored_fields.join(', ')}` : '';
+      const conflicts = ack.conflict_fields?.length ? ` · conflicts ${ack.conflict_fields.join(', ')}` : '';
+      detail.textContent = `${ack.live_data_mode || status.message || `sent ${status.sent}`}${ignored}${conflicts}`;
+      item.append(label, detail);
+      return item;
+    }));
+  } finally {
+    outputStatusPending = false;
+  }
 }
 
 function connectResults() {
+  if (document.hidden || !pageActive || resultSocket) return;
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
   const socket = new WebSocket(`${scheme}://${location.host}/api/v1/events`);
+  resultSocket = socket;
   socket.onopen = () => { byId('connection-dot').classList.add('online'); byId('connection-label').textContent = 'Live'; };
-  socket.onclose = () => { byId('connection-dot').classList.remove('online'); byId('connection-label').textContent = 'Reconnecting'; setTimeout(connectResults, 1000); };
+  socket.onclose = () => {
+    if (resultSocket !== socket) return;
+    resultSocket = null;
+    byId('connection-dot').classList.remove('online');
+    byId('connection-label').textContent = 'Reconnecting';
+    if (!document.hidden && pageActive) resultReconnect = setTimeout(connectResults, 1000);
+  };
   socket.onmessage = ({data}) => {
+    if (resultSocket !== socket || document.hidden || !pageActive) return;
     const event = JSON.parse(data);
     latestResultSequence = event.sequence || 0;
     latestResultFields = event.fields || [];
@@ -542,10 +609,13 @@ function connectResults() {
 }
 
 function connectPreview() {
+  if (document.hidden || !pageActive || previewSocket) return;
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-  const socket = new WebSocket(`${scheme}://${location.host}/api/v1/preview`);
+  const socket = new WebSocket(`${scheme}://${location.host}/api/v1/preview?flow_control=ack`);
+  previewSocket = socket;
   socket.binaryType = 'blob';
   socket.onmessage = async ({data}) => {
+    if (previewSocket !== socket || document.hidden || !pageActive) return;
     if (typeof data === 'string') {
       try {
         const metadata = JSON.parse(data);
@@ -554,11 +624,14 @@ function connectPreview() {
       return;
     }
     // Drop frames while decoding; WebSocket handlers do not await each other.
-    if (previewDecodePending) return;
+    if (previewDecodePending) {
+      socket.send('next');
+      return;
+    }
     previewDecodePending = true;
     try {
       const nextPreviewBitmap = await createImageBitmap(data);
-      if (socket.readyState !== WebSocket.OPEN) {
+      if (socket.readyState !== WebSocket.OPEN || previewSocket !== socket || document.hidden || !pageActive) {
         nextPreviewBitmap.close();
         return;
       }
@@ -581,9 +654,15 @@ function connectPreview() {
       // A corrupt frame must not stop subsequent preview updates.
     } finally {
       previewDecodePending = false;
+      // The server retains only its latest frame until this one is consumed.
+      if (socket.readyState === WebSocket.OPEN && previewSocket === socket) socket.send('next');
     }
   };
-  socket.onclose = () => setTimeout(connectPreview, 1500);
+  socket.onclose = () => {
+    if (previewSocket !== socket) return;
+    previewSocket = null;
+    if (!document.hidden && pageActive) previewReconnect = setTimeout(connectPreview, 1500);
+  };
 }
 
 function updatePreviewGeometry(width, height) {
@@ -593,14 +672,38 @@ function updatePreviewGeometry(width, height) {
   byId('preview-shell').style.aspectRatio = `${width} / ${height}`;
 }
 
-byId('filtered-preview').onload = () => {
-  byId('filtered-preview').hidden = false;
-  byId('filtered-preview-empty').hidden = true;
-};
-byId('filtered-preview').onerror = () => {
-  byId('filtered-preview').hidden = true;
-  byId('filtered-preview-empty').hidden = false;
-};
+function suspendDashboard() {
+  previewGeneration++;
+  clearTimeout(previewReconnect);
+  clearTimeout(resultReconnect);
+  const sockets = [previewSocket, resultSocket];
+  previewSocket = resultSocket = null;
+  sockets.forEach((socket) => socket?.close());
+  filteredPreviewController?.abort();
+  clearFilteredPreview();
+  previewBitmap?.close();
+  previewBitmap = null;
+  for (const bitmap of acceptedPreviews.values()) bitmap.close();
+  acceptedPreviews.clear();
+  renderResults([]);
+  canvas.width = canvas.height = 0;
+  byId('connection-dot').classList.remove('online');
+  byId('connection-label').textContent = 'Paused';
+}
+
+function resumeDashboard() {
+  if (document.hidden || !pageActive) return;
+  connectResults();
+  connectPreview();
+  updateRegionRuntime(true);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) suspendDashboard();
+  else resumeDashboard();
+});
+window.addEventListener('pagehide', () => { pageActive = false; suspendDashboard(); });
+window.addEventListener('pageshow', () => { pageActive = true; resumeDashboard(); });
 
 bindConfig();
 refreshProfiles().catch(() => {});

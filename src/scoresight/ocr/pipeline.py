@@ -16,7 +16,7 @@ from scoresight.core.models import (
 )
 from scoresight.ocr.base import OcrEngine
 from scoresight.ocr.preprocess import crop_region, preprocess, transform_frame
-from scoresight.ocr.smoothing import CharacterSmoother
+from scoresight.ocr.smoothing import CharacterSmoother, ClockTracker
 
 
 class RecognitionPipeline:
@@ -41,7 +41,12 @@ class RecognitionPipeline:
         self._smoothers = {
             region.id: CharacterSmoother(region.smoothing_window)
             for region in regions
-            if region.smoothing_window > 1
+            if region.smoothing_window > 1 and region.field_type != "time"
+        }
+        self._clocks = {
+            region.id: ClockTracker(region.confirmation_frames)
+            for region in regions
+            if region.field_type == "time"
         }
 
     def process(self, frame: FramePacket) -> ResultBatch:
@@ -87,17 +92,17 @@ class RecognitionPipeline:
             if region.remove_leading_zeros and value.isdigit():
                 value = value.lstrip("0") or "0"
             smoother = self._smoothers.get(region.id)
-            if smoother is not None:
+            clock = self._clocks.get(region.id)
+            valid = not value or (
+                (
+                    recognition.confidence is None
+                    or recognition.confidence >= region.confidence_threshold
+                )
+                and self._valid_field_type(value, region.field_type)
+                and re.fullmatch(region.format_regex, value) is not None
+            )
+            if smoother is not None and valid:
                 if value:
-                    if (
-                        region.field_type == "time"
-                        and smoother.history
-                        and re.sub(r"\d", "#", smoother.history[-1])
-                        != re.sub(r"\d", "#", value)
-                    ):
-                        # Clock formats change below a minute and at ten seconds.
-                        # Characters from different positions cannot be averaged.
-                        smoother.clear()
                     value = smoother.add(value)
                 else:
                     # Missing characters must not be filled from older frames.
@@ -106,18 +111,40 @@ class RecognitionPipeline:
             candidate_value = value
             # Blank is a valid candidate, even for numeric/time fields and when
             # the OCR engine reports zero confidence for an image with no text.
-            if candidate_value and (
-                (
-                    recognition.confidence is not None
-                    and recognition.confidence < region.confidence_threshold
+            if (
+                not valid
+                or candidate_value
+                and (
+                    (
+                        recognition.confidence is not None
+                        and recognition.confidence < region.confidence_threshold
+                    )
+                    or not self._valid_field_type(candidate_value, region.field_type)
+                    or re.fullmatch(region.format_regex, candidate_value) is None
                 )
-                or not self._valid_field_type(candidate_value, region.field_type)
-                or re.fullmatch(region.format_regex, candidate_value) is None
             ):
                 state = ResultState.REJECTED
+                if clock is not None:
+                    clock.reset_pending()
+            elif clock is not None and candidate_value:
+                self._pending_values.pop(region.id, None)
+                unchanged = self._last_values.get(region.id) == candidate_value
+                timestamp = (
+                    frame.monotonic_ns / 1_000_000_000
+                    if frame.monotonic_ns
+                    else frame.captured_at.timestamp()
+                )
+                confirmed = clock.add(candidate_value, timestamp, unchanged=unchanged)
+                state = (
+                    ResultState.UNCHANGED
+                    if unchanged
+                    else ResultState.OK if confirmed else ResultState.PENDING
+                )
             elif self._last_values.get(region.id) == candidate_value:
                 state = ResultState.UNCHANGED if candidate_value else ResultState.EMPTY
             else:
+                if clock is not None:
+                    clock.reset_pending()
                 pending_value, pending_count = self._pending_values.get(
                     region.id, ("", 0)
                 )
@@ -136,6 +163,8 @@ class RecognitionPipeline:
 
             now = datetime.now(UTC)
             if state == ResultState.OK:
+                if clock is not None and not candidate_value:
+                    clock.clear()
                 self._changed_at[region.id] = now
                 self._pending_values.pop(region.id, None)
                 self._last_values[region.id] = candidate_value

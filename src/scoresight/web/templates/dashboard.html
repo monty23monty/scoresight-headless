@@ -106,14 +106,14 @@
               <label><input id="region-leading" type="checkbox"> Remove leading zeros</label>
               <label><input id="region-autocrop" type="checkbox"> Auto-crop</label>
             </div>
-            <p class="hint">Clock accepts mm:ss and seconds with tenths below one minute (59.9). Custom regex must allow both formats. Clock and number types restrict Tesseract to valid characters. Confirm frames prevents a single bad reading from replacing the accepted value. Save to apply changes.</p>
+            <p class="hint">Clock accepts mm:ss and seconds with tenths below one minute (59.9). Custom regex must allow both formats. Clock confirmation follows changing readings; large jumps need at least three consistent frames. Character smoothing applies only to number and text fields. Save to apply changes.</p>
             <div class="filter-preview-card">
               <div class="panel-heading">
                 <strong>OCR filter preview</strong>
                 <span id="filtered-preview-state" class="result-state">Waiting</span>
               </div>
               <div class="filter-preview-shell">
-                <img id="filtered-preview" alt="Exact filtered image sent to OCR" hidden>
+                <canvas id="filtered-preview" role="img" aria-label="Filtered image sent to OCR" hidden></canvas>
                 <span id="filtered-preview-empty">Waiting for OCR input</span>
               </div>
               <dl class="recognition-values">

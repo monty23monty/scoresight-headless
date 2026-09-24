@@ -5,6 +5,7 @@ import json
 import secrets
 import time
 import uuid
+from collections.abc import Callable, Coroutine
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
@@ -52,6 +53,33 @@ from scoresight.web.security import (
 )
 
 PACKAGE_DIR = Path(__file__).resolve().parent
+
+
+async def _run_socket_stream(
+    websocket: WebSocket,
+    send: Callable[[], Coroutine[Any, Any, None]],
+    credit: asyncio.Event | None = None,
+) -> None:
+    """Observe disconnects even when the source has stopped producing frames."""
+
+    async def receive() -> None:
+        while True:
+            message = await websocket.receive_text()
+            if credit is not None:
+                if message != "next":
+                    await websocket.close(code=1008)
+                    return
+                credit.set()
+
+    tasks = [asyncio.create_task(send()), asyncio.create_task(receive())]
+    try:
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            task.result()
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def _safe_config(config: ServiceConfig) -> dict[str, Any]:
@@ -484,13 +512,17 @@ def create_app(
         app.state.websocket_counts["events"] += 1
         service.metrics.set_websocket("events", 1)
         await websocket.accept()
-        try:
-            if service.latest_result is not None:
-                await websocket.send_json(service.latest_result.model_dump(mode="json"))
+
+        async def send_events() -> None:
             async with service.results.subscribe() as queue:
+                if service.latest_result is not None:
+                    queue.put_nowait(service.latest_result)
                 while True:
                     result = await queue.get()
                     await websocket.send_json(result.model_dump(mode="json"))
+
+        try:
+            await _run_socket_stream(websocket, send_events)
         except WebSocketDisconnect:
             pass
         finally:
@@ -508,23 +540,20 @@ def create_app(
         app.state.websocket_counts["preview"] += 1
         service.metrics.set_websocket("preview", 1)
         await websocket.accept()
-        try:
-            if service.latest_preview is not None:
-                preview = service.latest_preview
-                await websocket.send_text(
-                    json.dumps(
-                        {
-                            "type": "preview.meta",
-                            "width": preview.width,
-                            "height": preview.height,
-                            "sequence": preview.sequence,
-                        }
-                    )
-                )
-                await websocket.send_bytes(preview.jpeg)
+        credit = (
+            asyncio.Event()
+            if websocket.query_params.get("flow_control") == "ack"
+            else None
+        )
+
+        async def send_previews() -> None:
             async with service.preview_frames.subscribe() as queue:
+                if service.latest_preview is not None:
+                    queue.put_nowait(service.latest_preview)
                 while True:
                     preview = await queue.get()
+                    if credit is not None:
+                        credit.clear()
                     await websocket.send_text(
                         json.dumps(
                             {
@@ -536,6 +565,13 @@ def create_app(
                         )
                     )
                     await websocket.send_bytes(preview.jpeg)
+                    # Bound browser/network buffers as well as the server
+                    # queue: send only after the previous image is consumed.
+                    if credit is not None:
+                        await credit.wait()
+
+        try:
+            await _run_socket_stream(websocket, send_previews, credit)
         except WebSocketDisconnect:
             pass
         finally:

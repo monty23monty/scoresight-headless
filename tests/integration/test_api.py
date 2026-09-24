@@ -32,25 +32,36 @@ def test_api_auth_config_revision_and_profiles(tmp_path) -> None:
         saved = client.put("/api/v1/config", headers=headers, json=current)
         assert saved.status_code == 200
         assert saved.json()["revision"] == 1
-        assert client.put("/api/v1/config", headers=headers, json=current).status_code == 409
+        assert (
+            client.put("/api/v1/config", headers=headers, json=current).status_code
+            == 409
+        )
 
         assert client.put("/api/v1/profiles/game", headers=headers).status_code == 200
         assert client.get("/api/v1/profiles", headers=headers).json() == ["game"]
         assert (
-            client.get("/api/v1/profiles/game", headers=headers).json()["source"]["mode"]
+            client.get("/api/v1/profiles/game", headers=headers).json()["source"][
+                "mode"
+            ]
             == "1080p25"
         )
 
         changed = saved.json()
         changed["source"]["mode"] = "1080p30"
-        assert client.put("/api/v1/config", headers=headers, json=changed).status_code == 200
+        assert (
+            client.put("/api/v1/config", headers=headers, json=changed).status_code
+            == 200
+        )
         activated = client.post("/api/v1/profiles/game/activate", headers=headers)
         assert activated.status_code == 200
         assert activated.json()["source"]["mode"] == "1080p25"
 
         invalid = activated.json()
         invalid["outputs"] = [{"kind": "webhook", "settings": {}}]
-        assert client.put("/api/v1/config", headers=headers, json=invalid).status_code == 422
+        assert (
+            client.put("/api/v1/config", headers=headers, json=invalid).status_code
+            == 422
+        )
 
 
 def test_login_cookie_csrf_and_read_token(tmp_path) -> None:
@@ -63,8 +74,14 @@ def test_login_cookie_csrf_and_read_token(tmp_path) -> None:
         assert created.status_code == 200
         read_token = created.json()["token"]
         client.cookies.clear()
-        assert client.get("/api/v1/health", params={"token": read_token}).status_code == 200
-        assert client.get("/api/v1/config", params={"token": read_token}).status_code == 401
+        assert (
+            client.get("/api/v1/health", params={"token": read_token}).status_code
+            == 200
+        )
+        assert (
+            client.get("/api/v1/config", params={"token": read_token}).status_code
+            == 401
+        )
 
 
 def test_event_websocket_starts_with_latest_snapshot(tmp_path) -> None:
@@ -74,7 +91,9 @@ def test_event_websocket_starts_with_latest_snapshot(tmp_path) -> None:
         sequence=7,
         captured_at=datetime.now(UTC),
         latency_ms=4,
-        fields=[ResultField(id="clock", name="Clock", value="1:23", state=ResultState.OK)],
+        fields=[
+            ResultField(id="clock", name="Clock", value="1:23", state=ResultState.OK)
+        ],
     )
     with (
         TestClient(app) as client,
@@ -105,6 +124,35 @@ def test_preview_websocket_starts_with_latest_frame(tmp_path) -> None:
     }
     assert jpeg == b"jpeg-data"
     assert app.state.service.preview_frames.subscriber_count == 0
+
+
+def test_preview_ack_skips_backlog_and_releases_subscription(tmp_path) -> None:
+    app, token = make_client(tmp_path)
+    service = app.state.service
+    service.latest_preview = PreviewFrame(
+        jpeg=b"first", width=640, height=360, sequence=1
+    )
+    with TestClient(app) as client:
+        with client.websocket_connect(
+            f"/api/v1/preview?token={token}&flow_control=ack"
+        ) as websocket:
+            assert websocket.receive_json()["sequence"] == 1
+            assert websocket.receive_bytes() == b"first"
+            for sequence in range(2, 102):
+                client.portal.call(
+                    service.publish_preview,
+                    PreviewFrame(
+                        jpeg=str(sequence).encode(),
+                        width=640,
+                        height=360,
+                        sequence=sequence,
+                    ),
+                )
+            websocket.send_text("next")
+            assert websocket.receive_json()["sequence"] == 101
+            assert websocket.receive_bytes() == b"101"
+        assert service.preview_frames.subscriber_count == 0
+        assert app.state.websocket_counts["preview"] == 0
 
 
 def test_filtered_region_preview_requires_auth_and_returns_png(tmp_path) -> None:
@@ -183,12 +231,17 @@ def test_cloudflare_mode_authenticates_http_csrf_and_websocket(tmp_path) -> None
     with TestClient(app) as client:
         assert client.get("/login", headers=access).status_code == 404
         assert client.get("/api/v1/config").status_code == 401
-        assert client.get("/api/v1/health", params={"token": "ignored"}).status_code == 401
+        assert (
+            client.get("/api/v1/health", params={"token": "ignored"}).status_code == 401
+        )
         dashboard = client.get("/", headers=access)
         assert dashboard.status_code == 200
         csrf = client.cookies.get("scoresight_csrf")
         current = client.get("/api/v1/config", headers=access).json()
-        assert client.put("/api/v1/config", headers=access, json=current).status_code == 403
+        assert (
+            client.put("/api/v1/config", headers=access, json=current).status_code
+            == 403
+        )
         saved = client.put(
             "/api/v1/config",
             headers={**access, "X-CSRF-Token": csrf},
@@ -239,5 +292,7 @@ def test_output_secrets_are_redacted_and_restored_on_save(tmp_path) -> None:
         safe = client.get("/api/v1/config", headers=headers).json()
         assert safe["outputs"][0]["settings"]["token"] == "__redacted__"
         safe["source"]["mode"] = "720p60"
-        assert client.put("/api/v1/config", headers=headers, json=safe).status_code == 200
+        assert (
+            client.put("/api/v1/config", headers=headers, json=safe).status_code == 200
+        )
     assert store.load().outputs[0].settings["token"] == "top-secret"
